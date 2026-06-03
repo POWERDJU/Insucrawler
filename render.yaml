@@ -2,7 +2,7 @@ services:
   - type: web
     name: ins-news
     env: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python scripts/start_web.py
     healthCheckPath: /health
@@ -27,7 +27,3 @@ services:
         sync: false
       - key: QWEN_API_KEY
         sync: false
-    disk:
-      name: ins-news-data
-      mountPath: /app/data
-      sizeGB: 1
