@@ -1,0 +1,10 @@
+[project]
+name = "insurance-news-intel"
+version = "0.1.0"
+description = "Domestic insurance product news intelligence MVP"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

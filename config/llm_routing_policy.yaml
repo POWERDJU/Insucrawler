@@ -1,0 +1,84 @@
+default_mode: gemini_extract_qwen_verify
+
+modes:
+  gemini_extract_qwen_verify:
+    extractor:
+      provider: gemini
+      model_env: GEMINI_EXTRACT_MODEL
+    verifier:
+      provider: qwen
+      model_env: QWEN_VERIFY_MODEL
+    adjudicator:
+      provider: gemini
+      model_env: GEMINI_ADJUDICATE_MODEL
+    use_adjudicator_on_conflict: true
+  qwen_extract_gemini_verify:
+    extractor:
+      provider: qwen
+      model_env: QWEN_EXTRACT_MODEL
+    verifier:
+      provider: gemini
+      model_env: GEMINI_VERIFY_MODEL
+    adjudicator:
+      provider: gemini
+      model_env: GEMINI_ADJUDICATE_MODEL
+    use_adjudicator_on_conflict: true
+  qwen_first_cost_saver:
+    extractor:
+      provider: qwen
+      model_env: QWEN_EXTRACT_MODEL
+    verifier:
+      provider: gemini
+      model_env: GEMINI_VERIFY_MODEL
+    verify_only_when:
+      - confidence_below: 0.75
+      - has_sales_metrics: true
+      - has_max_amount: true
+      - has_release_year_month: true
+      - product_type_conflict: true
+    adjudicator:
+      provider: gemini
+      model_env: GEMINI_ADJUDICATE_MODEL
+  parallel_consensus:
+    extractors:
+      - provider: gemini
+        model_env: GEMINI_EXTRACT_MODEL
+      - provider: qwen
+        model_env: QWEN_EXTRACT_MODEL
+    adjudicator:
+      provider: gemini
+      model_env: GEMINI_ADJUDICATE_MODEL
+    require_field_level_agreement: true
+  gemini_only:
+    extractor:
+      provider: gemini
+      model_env: GEMINI_EXTRACT_MODEL
+  qwen_only:
+    extractor:
+      provider: qwen
+      model_env: QWEN_EXTRACT_MODEL
+
+thresholds:
+  auto_save_confidence: 0.80
+  review_confidence: 0.65
+  critical_field_review:
+    - release_year_month
+    - max_amount_krw
+    - metric_value
+    - company_name
+    - product_type_code
+
+cost_optimization:
+  extract_only_candidates: true
+  verify_only_risky: true
+  skip_low_relevance: true
+  low_relevance_threshold: 0.40
+  high_relevance_threshold: 0.70
+  max_input_chars: 6000
+  max_output_tokens: 1200
+  use_snippets_only: true
+  enable_gemini_grounding: false
+  grounding_only_on_conflict: true
+  enable_product_cluster_extraction: true
+  enable_gemini_batch: true
+  batch_llm_for_backfill: true

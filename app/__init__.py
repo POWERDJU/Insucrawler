@@ -1,0 +1,1 @@
+"""Insurance news intelligence MVP."""

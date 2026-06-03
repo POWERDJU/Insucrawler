@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: ins-news
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/start_web.py
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///./data/insurance_news.db
+      - key: ENABLE_ARTICLE_BODY_FETCH
+        value: "false"
+      - key: ENABLE_GEMINI_GROUNDING
+        value: "false"
+      - key: EXCLUSIVE_RIGHT_EXTRACTION_DEFAULT_MODE
+        value: enqueue_only
+      - key: USE_BUNDLED_DB_SEED
+        value: "true"
+      - key: ADMIN_API_TOKEN
+        sync: false
+      - key: NAVER_CLIENT_ID
+        sync: false
+      - key: NAVER_CLIENT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: QWEN_API_KEY
+        sync: false
+    disk:
+      name: ins-news-data
+      mountPath: /app/data
+      sizeGB: 1

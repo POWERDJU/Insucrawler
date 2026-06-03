@@ -1,0 +1,19 @@
+models:
+  - provider: gemini
+    model_name: gemini-2.5-flash
+    input_cost_per_1m_tokens: 0.30
+    output_cost_per_1m_tokens: 2.50
+    cached_input_cost_per_1m_tokens: 0.075
+    batch_discount_rate: 0.50
+  - provider: gemini
+    model_name: default
+    input_cost_per_1m_tokens: 0.10
+    output_cost_per_1m_tokens: 0.40
+    cached_input_cost_per_1m_tokens: 0.025
+    batch_discount_rate: 0.50
+  - provider: qwen
+    model_name: default
+    input_cost_per_1m_tokens: 0.05
+    output_cost_per_1m_tokens: 0.20
+    cached_input_cost_per_1m_tokens: 0.01
+    batch_discount_rate: 0.50

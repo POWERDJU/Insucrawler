@@ -1,0 +1,57 @@
+company_name_normalized,alias,insurance_type,company_role,status_2024_2026,include_in_product_news_default,establishment_year,establishment_month,establishment_day,establishment_sort_date,establishment_basis,oldest_predecessor_year,current_brand_year,display_order_established,sort_tie_breaker,establishment_source_note,valid_from,valid_to,predecessor_company,successor_company,notes
+한화생명,한화생명보험,생명보험,life_primary,active,Y,1946,9,,1946-09,predecessor,1946,2012,1,10,대한생명 설립 기준,,,,,
+흥국생명,흥국생명보험,생명보험,life_primary,active,Y,1950,1,28,1950-01-28,predecessor,1950,,2,20,흥국생명 설립 기준,,,,,
+ABL생명,ABL생명보험,생명보험,life_primary,active,Y,1954,12,,1954-12,predecessor,1954,2017,3,30,제일생명 설립 기준,,,,,
+삼성생명,삼성생명보험,생명보험,life_primary,active,Y,1957,4,24,1957-04-24,predecessor,1957,1989,4,40,동방생명보험 설립 기준,,,,,
+교보생명,교보생명보험,생명보험,life_primary,active,Y,1958,8,7,1958-08-07,predecessor,1958,1995,5,50,대한교육보험 설립 기준,,,,,
+신한라이프생명,신한라이프|신한라이프생명보험|오렌지라이프|신한생명,생명보험,life_primary,active,Y,1987,,,1987,predecessor,1987,2021,6,60,오렌지라이프/조지아생명 및 신한생명 합병 계보 중 가장 이른 전신 기준,,,,"과거 신한생명/오렌지라이프 관련 alias 포함"
+라이나생명,라이나생명보험,생명보험,life_primary,active,Y,1987,,,1987,market_entry,1987,,7,70,라이나생명 한국 진출/설립 기준,,,,,
+AIA생명,AIA생명보험,생명보험,life_primary,active,Y,1987,,,1987,market_entry,1987,2018,8,80,AIA 한국 진출 기준,,,,,
+iM라이프생명,iM라이프|DGB생명|아이엠라이프생명|아이엠라이프,생명보험,life_primary,renamed,Y,1988,2,22,1988-02-22,predecessor,1988,2024,9,90,부산생명/DGB생명 계보 설립 기준,,,DGB생명,,"2024년 DGB생명에서 iM라이프로 사명 변경"
+미래에셋생명,미래에셋생명보험,생명보험,life_primary,active,Y,1988,3,7,1988-03-07,predecessor,1988,2005,10,100,대전생명 설립 기준,,,,,
+KDB생명,KDB생명보험,생명보험,life_primary,active,Y,1988,4,1,1988-04-01,predecessor,1988,2010,11,110,호남생명/금호생명 계보 기준,,,,,
+DB생명,DB생명보험,생명보험,life_primary,active,Y,1989,4,14,1989-04-14,predecessor,1989,2017,12,120,동부애트나생명 설립 기준,,,,,
+동양생명,동양생명보험,생명보험,life_primary,active,Y,1989,4,20,1989-04-20,predecessor,1989,,13,130,동양베네피트생명 설립 기준,,,,,
+푸본현대생명,푸본현대|푸본현대생명보험,생명보험,life_primary,active,Y,1989,6,,1989-06,predecessor,1989,2018,14,140,대신생명/녹십자생명/현대라이프 계보 기준,,,,,
+메트라이프생명,메트라이프|메트라이프생명보험,생명보험,life_primary,active,Y,1989,6,,1989-06,predecessor,1989,1998,15,150,코오롱메트생명 설립 기준,,,,,
+KB라이프생명,KB라이프|KB라이프생명보험|푸르덴셜생명|KB생명,생명보험,life_primary,active,Y,1989,,,1989,predecessor,1989,2023,16,160,푸르덴셜생명 한국법인 및 KB생명 통합 계보 기준,,,,"과거 푸르덴셜생명/KB생명 관련 alias 포함"
+처브라이프생명,처브라이프|처브라이프생명보험,생명보험,life_primary,active,Y,1990,8,1,1990-08-01,predecessor,1990,2016,17,170,뉴욕생명/에이스생명/처브라이프 계보 기준,,,,,
+하나생명,하나생명보험,생명보험,life_primary,active,Y,1991,11,25,1991-11-25,predecessor,1991,2003,18,180,AGF생명 설립 기준,,,,,
+BNP파리바카디프생명,카디프생명|BNP카디프생명|BNP파리바카디프생명보험|BNP파리바카디프생명,생명보험,life_primary,active,Y,2002,10,,2002-10,current_legal_entity,2002,2012,19,190,SH&C생명/BNP파리바카디프 합작 설립 기준,,,,,
+IBK연금보험,IBK연금,생명보험,life_primary,active,Y,2010,9,,2010-09,current_legal_entity,2010,,20,200,IBK연금보험 설립 기준,,,,,
+NH농협생명,농협생명|NH농협생명보험,생명보험,life_primary,active,Y,2012,3,2,2012-03-02,current_legal_entity,2012,,21,210,NH농협생명 출범 기준,,,,,
+교보라이프플래닛생명,교보라이프플래닛|교보플래닛|라이프플래닛|교보라이프플래닛생명보험,생명보험,life_primary,active,Y,2013,12,,2013-12,current_legal_entity,2013,,22,220,교보라이프플래닛생명 설립 기준,,,,,
+메리츠화재,메리츠화재해상보험|메리츠화재|메리츠손보,손해보험,nonlife_primary,active,Y,1922,10,,1922-10,predecessor,1922,,1,10,조선화재해상보험 설립 기준,,,,,
+한화손해보험,한화손보|한화손해보험|한화화재,손해보험,nonlife_primary,active,Y,1946,,,1946,predecessor,1946,,2,20,신동아화재 설립 기준,,,,캐롯손해보험,"2025.10.1 캐롯손보 흡수합병"
+롯데손해보험,롯데손보|롯데손해보험,손해보험,nonlife_primary,active,Y,1947,,,1947,predecessor,1947,,3,30,대한화재 설립 기준,,,,,
+MG손해보험,MG손보|엠지손해보험|MG손해보험,손해보험,nonlife_primary,transferred_to_bridge,Y,1947,,,1947,predecessor,1947,,4,40,국제손해보험/국제화재 계보 기준,,,,"2025년 예별손보로 계약 이전 이슈가 있으므로 과거 상품/기사 검색을 위해 포함"
+흥국화재,흥국화재해상보험|흥국화재|흥국손보,손해보험,nonlife_primary,active,Y,1948,,,1948,predecessor,1948,,5,50,고려화재 설립 기준,,,,,
+삼성화재,삼성화재해상보험|삼성화재|삼성손보,손해보험,nonlife_primary,active,Y,1952,,,1952,predecessor,1952,,6,60,안보화재 설립 기준,,,,,
+현대해상,현대해상화재보험|현대해상|현대손보,손해보험,nonlife_primary,active,Y,1955,,,1955,predecessor,1955,,7,70,동방해상보험 설립 기준,,,,,
+KB손해보험,KB손보|KB손해보험|LIG손해보험|LIG손보,손해보험,nonlife_primary,active,Y,1959,,,1959,predecessor,1959,,8,80,범한해상 계보 기준,,,,"과거 LIG손해보험 alias 포함"
+DB손해보험,DB손보|DB손해보험|동부화재|동부화재해상보험,손해보험,nonlife_primary,active,Y,1962,3,,1962-03,predecessor,1962,,9,90,한국자동차보험공영사 설립 기준,,,,,"과거 동부화재 alias 포함"
+서울보증보험,SGI서울보증|서울보증|서울보증보험,손해보험,guarantee_insurer,active,Y,1969,2,,1969-02,predecessor,1969,,10,100,대한보증보험 설립 기준,,,,,
+AXA손해보험,악사손보|AXA손보|악사손해보험|AXA손해보험,손해보험,foreign_primary,active,Y,2000,,,2000,predecessor,2000,,11,110,코리아Direct/교보자동차보험 계보 기준,,,,,
+하나손해보험,하나손보|하나손해보험|더케이손해보험|더케이손보,손해보험,nonlife_primary,active,Y,2003,12,,2003-12,predecessor,2003,2020,12,120,교원나라자동차보험/더케이손보 계보 기준,,,,,"과거 더케이손해보험 alias 포함"
+신한EZ손해보험,신한EZ손보|신한이지손보|신한EZ손해보험|BNP파리바카디프손해보험|BNP카디프손보|카디프손보,손해보험,nonlife_digital,active,Y,2004,1,,2004-01,predecessor,2004,2022,13,130,다음다이렉트자동차보험 계보 기준,,,BNP파리바카디프손해보험,,"구 BNP파리바카디프손보"
+NH농협손해보험,농협손보|NH농협손보|NH농협손해보험,손해보험,nonlife_primary,active,Y,2012,3,2,2012-03-02,current_legal_entity,2012,,14,140,NH농협손해보험 출범 기준,,,,,
+캐롯손해보험,캐롯손보|캐롯|캐롯손해보험,손해보험,nonlife_digital,merged,Y,2019,,,2019,current_legal_entity,2019,2019,15,150,캐롯손해보험 설립/인가 기준,,,,한화손해보험,"2025.10.1 한화손보로 흡수합병. 과거 상품/기사 검색을 위해 포함"
+카카오페이손해보험,카카오페이손보|카카오손보|카카오페이손해보험,손해보험,nonlife_digital,active,Y,2022,,,2022,current_legal_entity,2022,2022,16,160,카카오페이손해보험 본허가/출범 기준,,,,,
+마이브라운반려동물전문보험,마이브라운|mybrown|마이브라운손보|마이브라운보험|마이브라운반려동물보험,손해보험,short_term_pet_insurer,new,Y,2024,3,,2024-03,current_legal_entity,2024,2024,17,170,마이브라운 설립 기준,,,,,"국내 반려동물 전문보험회사. 신규 소액단기보험사 성격"
+예별손해보험,예별손보|구 MG손보|舊 MG손보|MG손해보험 계약이전,손해보험,nonlife_bridge,bridge,Y,2025,7,,2025-07,bridge_license,2025,2025,18,180,MG손보 정리를 위한 가교보험사 조건부 허가 기준,,,MG손해보험,,"MG손보 계약 유지·관리 목적 가교보험사"
+코리안리재보험,코리안리|Korean Re|코리안리재보험,손해보험,reinsurer,active,N,1963,3,19,1963-03-19,current_legal_entity,1963,,90,900,대한손해재보험공사 설립 기준,,,,,
+AIG손해보험,AIG손보|AIG손해보험,손해보험,foreign_primary,active,Y,1968,4,,1968-04,branch_entry,1968,,91,910,국내 외국인/외국기업 대상 보험영업 면허 기준,,,,,
+라이나손해보험,라이나손보|라이나손해보험|에이스손해보험|에이스아메리칸화재해상보험|ACE손보|Chubb손보|처브손보,손해보험,foreign_primary,renamed,Y,1968,5,17,1968-05-17,branch_entry,1968,2024,92,920,에이스아메리칸화재해상보험 국내 사업면허 기준,,,에이스손해보험,,"2024년 에이스손해보험에서 라이나손해보험으로 브랜드 변경"
+미쓰이스미토모해상화재보험 한국지점,미쓰이|미쓰이스미토모|MSIG|미쓰이스미토모해상,손해보험,foreign_branch,active,N,,,,,branch_entry,,,93,930,세부 설립/진출일 확인 필요,,,,,
+스위스리,스위스리재보험|Swiss Re|스위스리,손해보험,reinsurer,active,N,,,,,branch_entry,,,94,940,세부 설립/진출일 확인 필요,,,,,
+스코르리,스코르리재보험|SCOR Re|SCOR|스코르,손해보험,reinsurer,active,N,,,,,branch_entry,,,95,950,세부 설립/진출일 확인 필요,,,,,
+뮌헨리,뮌헨재보험|Munich Re|뮌헨리,손해보험,reinsurer,active,N,,,,,branch_entry,,,96,960,세부 설립/진출일 확인 필요,,,,,
+RGA재보험 한국지점,RGA|RGA재보험|RGA재보험 한국지점,손해보험,reinsurer,active,N,,,,,branch_entry,,,97,970,세부 설립/진출일 확인 필요,,,,,
+알리안츠,Allianz|알리안츠글로벌|알리안츠,손해보험,foreign_branch,active,N,,,,,branch_entry,,,98,980,세부 설립/진출일 확인 필요,,,,,
+퍼시픽리,Pacific Life Re|퍼시픽라이프리|퍼시픽리,손해보험,reinsurer,active,N,,,,,branch_entry,,,99,990,세부 설립/진출일 확인 필요,,,,,
+팩토리뮤추얼,팩토리|Factory Mutual|FM|팩토리뮤추얼,손해보험,foreign_branch,active,N,,,,,branch_entry,,,100,1000,세부 설립/진출일 확인 필요,,,,,
+제너럴리,Generali|제네랄리|제너럴리,손해보험,foreign_branch,active,N,,,,,branch_entry,,,101,1010,세부 설립/진출일 확인 필요,,,,,
+하노버리,Hannover Re|하노버재보험|하노버리,손해보험,reinsurer,active,N,,,,,branch_entry,,,102,1020,세부 설립/진출일 확인 필요,,,,,
+동경해상화재일동보험 서울지점,토키오마린|동경해상|Tokio Marine|동경해상화재일동보험,손해보험,reinsurer_or_foreign_branch,exiting,N,,,,,branch_entry,,,103,1030,세부 설립/진출일 확인 필요,,,,,"2025년 한국 철수/서울지점 정리 절차 보도. 과거 영업 이력 보존 목적"
+퍼스트,First|퍼스트,손해보험,foreign_branch,unknown,N,,,,,unknown,,,104,1040,법인명 및 국내 진출일 세부 확인 필요,,,,,"법인명 세부 확인 필요. 회사 마스터에는 보존하되 기본 피벗 제외"
+스타,Starr|스타보험|스타,손해보험,foreign_branch,unknown,N,,,,,unknown,,,105,1050,법인명 및 국내 진출일 세부 확인 필요,,,,,"Starr 계열로 추정. 회사 마스터에는 보존하되 기본 피벗 제외"

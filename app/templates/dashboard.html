@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>보험상품 뉴스 자동조사봇</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20260603-exclusive-keyword-fix" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-title-wrap">
+        <h1>보험상품 뉴스 자동조사봇</h1>
+      </div>
+      <nav class="header-actions desktop-only" aria-label="보조 링크">
+        <button id="toggleAdminPanel" type="button" class="admin-update-button">
+          <img src="{{ url_for('static', path='assets/admin-dino.png') }}" alt="" class="admin-update-icon" aria-hidden="true" />
+          <span>관리자 업데이트</span>
+        </button>
+      </nav>
+    </header>
+
+    <main class="dashboard-shell" data-mobile-active-view="products">
+      <div class="mobile-view-tabs mobile-board-tabs mobile-only" role="tablist" aria-label="모바일 조회 구분">
+        <button type="button" class="active" data-mobile-view-tab="products" aria-pressed="true">상품</button>
+        <button type="button" data-mobile-view-tab="exclusive-rights" aria-pressed="false">배타적사용권</button>
+      </div>
+
+      <section class="top-newsboards" aria-label="상단 현황판">
+      <section id="monthlyNewProductBoard" class="monthly-board board-card mobile-products-section" aria-label="이달의 신상품 현황판">
+        <div class="monthly-board-header">
+          <div>
+            <span class="eyebrow">이달의 신상품</span>
+            <h2 id="monthlyBoardTitle">이달의 신상품</h2>
+          </div>
+          <div class="monthly-board-controls">
+            <button id="monthlyPrev" type="button" class="secondary" aria-label="이전 신상품">‹</button>
+            <button id="monthlyNext" type="button" class="secondary" aria-label="다음 신상품">›</button>
+          </div>
+        </div>
+        <a id="monthlyBoardCard" class="monthly-card newsboard-card-with-logo" href="#" target="_blank" rel="noreferrer">
+          <div id="monthlyLogoWrap" class="newsboard-logo-wrap" hidden>
+            <img id="monthlyCompanyLogo" class="newsboard-company-logo" alt="" hidden />
+          </div>
+          <div class="monthly-card-meta">
+            <span id="monthlyCompany"></span>
+            <span id="monthlyType"></span>
+            <span id="monthlyReleaseMonth"></span>
+          </div>
+          <h3 id="monthlyProductName">이달의 신상품을 불러오는 중입니다.</h3>
+          <p id="monthlySummary"></p>
+          <div class="monthly-card-footer">
+            <span id="monthlyArticleTitle"></span>
+            <span id="monthlyPager"></span>
+          </div>
+        </a>
+        <div id="monthlyBoardEmpty" class="monthly-empty" hidden>
+          이달의 신상품 데이터가 없습니다. 수집/추출 작업을 실행해 주세요.
+        </div>
+      </section>
+
+      <section id="recentExclusiveRightsBoard" class="monthly-board exclusive-board board-card mobile-exclusive-section" aria-label="최근 1년 배타적사용권 현황판">
+        <div class="monthly-board-header">
+          <div>
+            <span class="eyebrow">배타적사용권</span>
+            <h2 id="exclusiveBoardTitle">최근 1년 배타적사용권</h2>
+          </div>
+          <div class="monthly-board-controls">
+            <button id="exclusivePrev" type="button" class="secondary" aria-label="이전 배타적사용권">‹</button>
+            <button id="exclusiveNext" type="button" class="secondary" aria-label="다음 배타적사용권">›</button>
+          </div>
+        </div>
+        <a id="exclusiveBoardCard" class="monthly-card newsboard-card-with-logo" href="#" target="_blank" rel="noreferrer">
+          <div id="exclusiveLogoWrap" class="newsboard-logo-wrap" hidden>
+            <img id="exclusiveCompanyLogo" class="newsboard-company-logo" alt="" hidden />
+          </div>
+            <div class="monthly-card-meta">
+              <span id="exclusiveInsuranceType"></span>
+              <span id="exclusiveCompany"></span>
+              <span id="exclusiveMonths"></span>
+            </div>
+          <h3 id="exclusiveSubjectName">최근 배타적사용권을 불러오는 중입니다.</h3>
+          <p id="exclusiveSummary"></p>
+          <div class="monthly-card-footer">
+            <span id="exclusiveFooter"></span>
+            <span id="exclusivePager"></span>
+          </div>
+        </a>
+        <div id="exclusiveBoardEmpty" class="monthly-empty" hidden>
+          최근 1년 배타적사용권 데이터가 없습니다.
+        </div>
+      </section>
+      </section>
+
+      <section class="toolbar desktop-only" aria-label="조회 필터">
+        <div class="filter-grid">
+          <div class="filter-field">
+            <span>출시년도</span>
+            <div class="checkbox-select">
+              <div class="select-all-line">
+                <button id="releaseYearAll" type="button" class="select-all-button" aria-pressed="true">전체선택</button>
+              </div>
+              <div id="releaseYearOptions" class="checkbox-list"></div>
+            </div>
+          </div>
+          <div class="filter-field">
+            <span>업종</span>
+            <select id="insuranceType">
+              <option value="">업종 선택</option>
+              <option value="생명보험">생명보험</option>
+              <option value="손해보험">손해보험</option>
+            </select>
+          </div>
+          <div class="filter-field">
+            <span>보험회사</span>
+            <div id="companyFilter" class="checkbox-select disabled">
+              <div class="select-all-line">
+                <button id="companyNamesAll" type="button" class="select-all-button" aria-pressed="false" disabled>전체선택</button>
+              </div>
+              <div id="companyNames" class="checkbox-list">
+                <div class="checkbox-empty">업종을 먼저 선택하세요.</div>
+              </div>
+            </div>
+          </div>
+          <div class="filter-field">
+            <span>보종군</span>
+            <div class="checkbox-select">
+              <div class="select-all-line">
+                <button id="productTypeCodesAll" type="button" class="select-all-button" aria-pressed="true">전체선택</button>
+              </div>
+              <div id="productTypeCodes" class="checkbox-list"></div>
+            </div>
+          </div>
+          <div class="filter-field keyword-field">
+            <span>키워드</span>
+            <input id="keywordInput" class="keyword-search" type="search" placeholder="상품명, 요약, 보장내용, 기사제목 검색" />
+          </div>
+          <button id="runQuery" type="button" class="button-with-icon">
+            <span class="button-text">조회</span>
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m16.5 16.5 4 4"></path>
+            </svg>
+          </button>
+          <button id="downloadExcel" type="button" class="secondary button-with-icon">
+            <span class="button-text">엑셀 다운로드</span>
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <path d="M14 2v6h6"></path>
+              <path d="M8 13h8"></path>
+              <path d="M8 17h8"></path>
+              <path d="M8 9h2"></path>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <section class="mobile-filter-bar mobile-only mobile-products-section" aria-label="모바일 상품 필터">
+        <div class="mobile-filter-summary" id="mobileFilterSummary">전체 · 회사 전체 · 상품군 전체</div>
+        <button id="openMobileFilter" type="button" class="mobile-filter-button">필터</button>
+      </section>
+
+      <div id="mobileFilterSheet" class="mobile-filter-sheet product-mobile-filter-sheet mobile-only mobile-products-section" hidden>
+        <div class="mobile-filter-backdrop" data-mobile-filter-close></div>
+        <div class="mobile-filter-panel" role="dialog" aria-modal="true" aria-label="검색 필터">
+          <div class="mobile-filter-header">
+            <h2>필터</h2>
+            <button id="closeMobileFilter" type="button" aria-label="필터 닫기">닫기</button>
+          </div>
+          <div class="mobile-filter-body">
+            <section class="mobile-filter-section">
+              <button type="button" class="mobile-filter-section-title" aria-expanded="true">업종 <span id="mobileInsuranceTypeSummary">전체</span></button>
+              <div class="mobile-filter-section-body">
+                <div id="mobileInsuranceTypeSegments" class="mobile-segment" data-filter="insurance_type">
+                  <button type="button" data-mobile-insurance="" class="active">전체</button>
+                  <button type="button" data-mobile-insurance="생명보험">생명보험</button>
+                  <button type="button" data-mobile-insurance="손해보험">손해보험</button>
+                </div>
+              </div>
+            </section>
+            <section class="mobile-filter-section">
+              <button type="button" class="mobile-filter-section-title" aria-expanded="true">출시년도 <span id="mobileYearCount">전체</span></button>
+              <div class="mobile-filter-section-body">
+                <button id="mobileReleaseYearAll" type="button" class="select-all-button" aria-pressed="true">전체해제</button>
+                <div id="mobileReleaseYearOptions" class="checkbox-list mobile-checkbox-list"></div>
+              </div>
+            </section>
+            <section class="mobile-filter-section">
+              <button type="button" class="mobile-filter-section-title" aria-expanded="true">보험회사 <span id="mobileCompanyCount" class="mobile-filter-count" hidden>전체</span></button>
+              <div class="mobile-filter-section-body">
+                <input id="mobileCompanySearch" type="search" placeholder="회사명 검색" />
+                <button id="mobileCompanyNamesAll" type="button" class="select-all-button" aria-pressed="true">전체해제</button>
+                <div id="mobileCompanyNames" class="checkbox-list mobile-checkbox-list"></div>
+              </div>
+            </section>
+            <section class="mobile-filter-section">
+              <button type="button" class="mobile-filter-section-title" aria-expanded="true">상품군 <span id="mobileProductTypeCount">전체</span></button>
+              <div class="mobile-filter-section-body">
+                <button id="mobileProductTypeCodesAll" type="button" class="select-all-button" aria-pressed="true">전체해제</button>
+                <div id="mobileProductTypeCodes" class="checkbox-list mobile-checkbox-list"></div>
+              </div>
+            </section>
+            <section class="mobile-filter-section">
+              <button type="button" class="mobile-filter-section-title" aria-expanded="true">키워드</button>
+              <div class="mobile-filter-section-body">
+                <input id="mobileKeywordInput" class="keyword-search" type="search" placeholder="상품명, 요약, 보장내용, 기사제목 검색" />
+              </div>
+            </section>
+          </div>
+          <div class="mobile-filter-actions">
+            <button id="resetMobileFilter" type="button" class="secondary">초기화</button>
+            <button id="applyMobileFilter" type="button">적용</button>
+          </div>
+        </div>
+      </div>
+
+      <section class="status-strip" aria-label="데이터 적재 상태">
+        <span>상품 <strong id="statusProductCount">-</strong></span>
+        <span>기사 <strong id="statusArticleCount">-</strong></span>
+        <span>추출대기 <strong id="statusPendingExtraction">-</strong></span>
+        <span>마지막 성공 <strong id="statusLastSuccess">-</strong></span>
+        <span>마지막 실패 <strong id="statusLastFailed">-</strong></span>
+      </section>
+
+      <section id="adminPanel" class="panel admin-panel" hidden aria-label="관리자 업데이트">
+        <div class="panel-header">
+          <h2>관리자 업데이트</h2>
+          <button id="refreshCrawlJobs" type="button" class="secondary">상태 새로고침</button>
+        </div>
+        <div class="admin-content">
+          <div id="adminLogin" class="admin-login">
+            <label>
+              <span>관리자 비밀번호</span>
+              <input id="adminPassword" type="password" autocomplete="current-password" />
+            </label>
+            <button id="adminAuth" type="button">인증</button>
+            <span id="adminAuthMessage" class="muted"></span>
+          </div>
+          <div id="adminControls" hidden>
+            <div class="admin-actions">
+              <fieldset>
+                <legend>공통 옵션</legend>
+                <label class="checkbox-line"><input id="crawlIncludeLlm" type="checkbox" /><span>LLM 추출까지 실행</span></label>
+                <label>
+                  <span>LLM 처리방식</span>
+                  <select id="crawlExtractionMode">
+                    <option value="none">수집만</option>
+                    <option value="screening_only">screening만</option>
+                    <option value="enqueue_only" selected>queue만 생성</option>
+                    <option value="batch">Batch 추출용 queue</option>
+                    <option value="realtime">실시간 추출</option>
+                  </select>
+                </label>
+                <label class="checkbox-line"><input id="crawlIncludeExclusiveRightPipeline" type="checkbox" /><span>크롤링 후 배타적사용권 Batch 준비</span></label>
+                <label>
+                  <span>배타적사용권 처리방식</span>
+                  <select id="crawlExclusiveRightMode">
+                    <option value="screening_only">screening만</option>
+                    <option value="enqueue_only">queue만 생성</option>
+                    <option value="batch" selected>Batch 준비</option>
+                    <option value="realtime">실시간 소량 처리</option>
+                    <option value="none">처리 안 함</option>
+                  </select>
+                </label>
+                <label class="checkbox-line"><input id="crawlExclusiveRightAutoSubmit" type="checkbox" /><span>Batch 자동 제출</span></label>
+                <label class="checkbox-line"><input id="crawlExclusiveRightAutoConsolidate" type="checkbox" checked /><span>import 후 자동 통합</span></label>
+                <label><span>배타적사용권 limit</span><input id="crawlExclusiveRightLimit" type="number" min="1" max="10000" placeholder="1000" /></label>
+                <label class="checkbox-line"><input id="crawlIncludeReinsurers" type="checkbox" /><span>재보험 포함</span></label>
+                <label class="checkbox-line"><input id="crawlIncludeForeignBranches" type="checkbox" /><span>외국지점 포함</span></label>
+              </fieldset>
+              <div class="admin-action-card">
+                <h3>테스트 수집</h3>
+                <p>2026-01-01 ~ 2026-01-31 기간의 보험상품 뉴스를 수집합니다.</p>
+                <button id="runTestCrawl" type="button">2026년 1월 테스트 수집</button>
+              </div>
+              <div class="admin-action-card">
+                <h3>전체 과거 적재</h3>
+                <p>2024-01-01 ~ 2026-05-31 기간을 월별/회사별/검색어별로 나누어 수집합니다.</p>
+                <button id="runBackfillCrawl" type="button">2024~2026년 5월 전체 수집</button>
+              </div>
+              <div class="admin-action-card">
+                <h3>최근 데이터 업데이트</h3>
+                <label>
+                  <span>기간</span>
+                  <select id="incrementalDays">
+                    <option value="7">최근 7일</option>
+                    <option value="14" selected>최근 14일</option>
+                    <option value="30">최근 30일</option>
+                  </select>
+                </label>
+                <button id="runIncrementalCrawl" type="button">최근 뉴스 업데이트</button>
+              </div>
+              <div class="admin-action-card">
+                <h3>직접 기간 지정</h3>
+                <label><span>시작일</span><input id="manualDateFrom" type="date" value="2026-01-01" /></label>
+                <label><span>종료일</span><input id="manualDateTo" type="date" value="2026-01-31" /></label>
+                <button id="runManualCrawl" type="button">직접 기간 수집</button>
+              </div>
+              <div class="admin-action-card">
+                <h3>배타적사용권 추출</h3>
+                <label>
+                  <span>처리방식</span>
+                  <select id="exclusiveRightExtractionMode">
+                    <option value="none">none</option>
+                    <option value="screening_only">screening only</option>
+                    <option value="enqueue_only" selected>queue만 생성</option>
+                    <option value="batch">Batch 추출용 queue</option>
+                    <option value="realtime">실시간 정형화</option>
+                  </select>
+                </label>
+                <label><span>Limit</span><input id="exclusiveRightExtractionLimit" type="number" min="1" max="1000" value="100" /></label>
+                <label><span>Crawl job ID</span><input id="exclusiveRightCrawlJobId" type="number" min="1" placeholder="선택" /></label>
+                <label><span>시작일</span><input id="exclusiveRightDateFrom" type="date" /></label>
+                <label><span>종료일</span><input id="exclusiveRightDateTo" type="date" /></label>
+                <button id="runExclusiveRightExtraction" type="button">배타적사용권 추출 실행</button>
+                <button id="refreshExclusiveRightQueue" type="button" class="secondary">queue status</button>
+                <button id="runExclusiveRightConsolidation" type="button" class="secondary">rule consolidation</button>
+              </div>
+            </div>
+            <div class="admin-warning">전체 수집은 오래 걸릴 수 있으며 API 호출량과 LLM 비용이 발생할 수 있습니다.</div>
+            <div id="adminJobMessage" class="muted"></div>
+            <section class="admin-report">
+              <div class="panel-header">
+                <h3>LLM 비용절감 리포트</h3>
+                <button id="refreshLlmSavings" type="button" class="secondary">비용절감 조회</button>
+              </div>
+              <div class="filter-grid compact-grid">
+                <label>
+                  <span>기간</span>
+                  <select id="llmSavingsRange">
+                    <option value="all">전체</option>
+                    <option value="today">오늘</option>
+                    <option value="7">최근 7일</option>
+                    <option value="30">최근 30일</option>
+                    <option value="custom">직접 지정</option>
+                  </select>
+                </label>
+                <label>
+                  <span>시작일</span>
+                  <input id="llmSavingsDateFrom" type="date" />
+                </label>
+                <label>
+                  <span>종료일</span>
+                  <input id="llmSavingsDateTo" type="date" />
+                </label>
+                <label>
+                  <span>Baseline</span>
+                  <select id="llmBaselinePolicy">
+                    <option value="all_articles_fulltext_extract_and_verify">모든 기사 fulltext extract + verify</option>
+                    <option value="all_articles_fulltext_extract_only">모든 기사 fulltext extract only</option>
+                    <option value="candidate_articles_fulltext_extract_and_verify">후보 기사 fulltext extract + verify</option>
+                    <option value="candidate_articles_fulltext_extract_only">후보 기사 fulltext extract only</option>
+                  </select>
+                </label>
+              </div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="llmSavingsTable"></table>
+              </div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="llmSavingsBreakdownTable"></table>
+              </div>
+            </section>
+            <section class="admin-report">
+              <div class="panel-header">
+                <h3>LLM Batch 작업</h3>
+                <button id="refreshLlmBatchJobs" type="button" class="secondary">Batch 상태 새로고침</button>
+              </div>
+              <div class="filter-grid compact-grid">
+                <label>
+                  <span>Task</span>
+                  <select id="llmBatchTaskType">
+                    <option value="extract" selected>상품 추출</option>
+                    <option value="exclusive_right_extract">배타적사용권 추출</option>
+                  </select>
+                </label>
+                <label>
+                  <span>모델</span>
+                  <input id="llmBatchModel" type="text" value="gemini-2.5-flash" />
+                </label>
+                <label>
+                  <span>요청 수</span>
+                  <input id="llmBatchLimit" type="number" min="1" max="10000" value="1000" />
+                </label>
+                <label>
+                  <span>Crawl Job ID</span>
+                  <input id="llmBatchCrawlJobId" type="number" min="1" placeholder="선택" />
+                </label>
+                <label class="checkbox-line">
+                  <input id="llmBatchSubmitNow" type="checkbox" />
+                  <span>생성 후 바로 제출</span>
+                </label>
+                <div class="button-row">
+                  <button id="createLlmBatchJob" type="button">Batch 생성</button>
+                </div>
+              </div>
+              <div id="llmBatchMessage" class="muted"></div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="llmBatchJobTable"></table>
+              </div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="llmBatchQueueTable"></table>
+              </div>
+            </section>
+            <section class="admin-report">
+              <div class="panel-header">
+                <h3>LLM 비용절감 가드</h3>
+                <button id="refreshLlmGuardSummary" type="button" class="secondary">가드 상태 새로고침</button>
+              </div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="llmGuardSummaryTable"></table>
+              </div>
+            </section>
+            <section class="admin-report">
+              <div class="panel-header">
+                <h3>상품통합 정리</h3>
+                <button id="refreshProductConsolidation" type="button" class="secondary">상품통합 상태 새로고침</button>
+              </div>
+              <div class="filter-grid compact-grid">
+                <label>
+                  <span>실행 모드</span>
+                  <select id="productConsolidationMode">
+                    <option value="dry_run">Dry-run</option>
+                    <option value="rule_only_apply" selected>Rule-only 적용</option>
+                    <option value="apply_with_llm_gray_blocks">LLM gray block 포함</option>
+                  </select>
+                </label>
+                <label>
+                  <span>대상</span>
+                  <select id="productConsolidationTarget">
+                    <option value="new_since_last_job">신규/미정리</option>
+                    <option value="all_provisional" selected>Provisional 전체</option>
+                    <option value="all">전체</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Limit</span>
+                  <input id="productConsolidationLimit" type="number" min="1" max="10000" value="500" />
+                </label>
+                <label class="checkbox-line">
+                  <input id="productConsolidationUseLlm" type="checkbox" />
+                  <span>gray block LLM 검토</span>
+                </label>
+                <div class="button-row">
+                  <button id="runProductConsolidation" type="button">상품통합 실행</button>
+                </div>
+              </div>
+              <div id="productConsolidationMessage" class="muted"></div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="productConsolidationSummaryTable"></table>
+              </div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="productConsolidationJobTable"></table>
+              </div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="productConsolidationBlockTable"></table>
+              </div>
+            </section>
+            <div class="table-wrap admin-table-wrap">
+              <table id="llmCostTable"></table>
+            </div>
+            <div class="table-wrap admin-table-wrap">
+              <table id="crawlJobTable"></table>
+            </div>
+            <div class="table-wrap admin-table-wrap">
+              <table id="crawlJobDetailTable"></table>
+            </div>
+            <div class="table-wrap admin-table-wrap">
+              <table id="crawlTaskTable"></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="demoNotice" class="notice" hidden>
+        <strong>표시할 상품 데이터가 없습니다.</strong>
+        <span>로컬에서 <code>python scripts/seed_demo_data.py</code>를 실행하면 화면 확인용 데모 데이터가 생성됩니다.</span>
+      </section>
+
+      <section class="workbench mobile-products-section">
+        <div class="results-area">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>상품 비교표</h2>
+              <span id="productMeta"></span>
+            </div>
+            <div class="table-wrap desktop-results">
+              <table id="productTable"></table>
+            </div>
+            <div id="mobileProductCards" class="mobile-results mobile-only mobile-products-section"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="detail-panel detail-panel-full" aria-label="상품 상세">
+        <div class="panel-header">
+          <h2>상품 상세</h2>
+          <button id="closeDetail" type="button" class="secondary">닫기</button>
+        </div>
+        <div id="detailContent" class="detail-empty">상품목록에서 상품명을 선택하세요.</div>
+      </section>
+
+      <div id="mobileProductDetailModal" class="mobile-detail-modal mobile-only" hidden>
+        <div class="mobile-detail-backdrop" data-mobile-detail-close></div>
+        <div class="mobile-detail-panel" role="dialog" aria-modal="true" aria-label="상품 상세">
+          <div class="mobile-detail-header">
+            <button id="closeMobileProductDetail" type="button" aria-label="상품 상세 닫기">닫기</button>
+            <h2>상품 상세</h2>
+          </div>
+          <div id="mobileProductDetailContent" class="mobile-detail-content"></div>
+        </div>
+      </div>
+
+      <section id="exclusiveRightListPanel" class="panel exclusive-list-panel mobile-exclusive-section" aria-label="배타적사용권 조회">
+        <div class="panel-header">
+          <div>
+            <h2>배타적사용권 조회</h2>
+            <span id="exclusiveRightListMeta"></span>
+          </div>
+          <button id="exclusiveRightExcelDownload" type="button" class="secondary button-with-icon">
+            <span class="button-text">배타적사용권 엑셀 다운로드</span>
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <path d="M14 2v6h6"></path>
+              <path d="M8 13h8"></path>
+              <path d="M8 17h8"></path>
+              <path d="M8 9h2"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="mobile-exclusive-filter-bar mobile-only mobile-exclusive-section" aria-label="모바일 배타적사용권 필터">
+          <div class="mobile-filter-summary" id="mobileExclusiveFilterSummary">최근 1년 · 전체</div>
+          <button id="openMobileExclusiveFilter" type="button" class="mobile-filter-button">필터</button>
+        </div>
+        <div id="mobileExclusiveFilterSheet" class="mobile-filter-sheet exclusive-mobile-filter-sheet mobile-only mobile-exclusive-section" hidden>
+          <div class="mobile-filter-backdrop" data-mobile-exclusive-filter-close></div>
+          <div class="mobile-filter-panel" role="dialog" aria-modal="true" aria-label="배타적사용권 필터">
+            <div class="mobile-filter-header">
+              <h2>배타적사용권 필터</h2>
+              <button id="closeMobileExclusiveFilter" type="button" aria-label="배타적사용권 필터 닫기">닫기</button>
+            </div>
+            <div class="mobile-filter-body">
+              <section class="mobile-filter-section">
+                <button type="button" class="mobile-filter-section-title" aria-expanded="true">업종 <span id="mobileExclusiveInsuranceSummary">전체</span></button>
+                <div class="mobile-filter-section-body">
+                  <div id="mobileExclusiveInsuranceTypeSegments" class="mobile-segment" data-filter="exclusive_insurance_type">
+                    <button type="button" data-mobile-exclusive-insurance="" class="active">전체</button>
+                    <button type="button" data-mobile-exclusive-insurance="생명보험">생명보험</button>
+                    <button type="button" data-mobile-exclusive-insurance="손해보험">손해보험</button>
+                  </div>
+                </div>
+              </section>
+              <section class="mobile-filter-section">
+                <button type="button" class="mobile-filter-section-title" aria-expanded="true">회사 <span id="mobileExclusiveCompanyCount" class="mobile-filter-count" hidden>전체</span></button>
+                <div class="mobile-filter-section-body">
+                  <input id="mobileExclusiveCompanySearch" type="search" placeholder="회사명 검색" />
+                  <button id="mobileExclusiveCompanyNamesAll" type="button" class="select-all-button" aria-pressed="true">전체해제</button>
+                  <div id="mobileExclusiveCompanyNames" class="checkbox-list mobile-checkbox-list"></div>
+                </div>
+              </section>
+              <section class="mobile-filter-section">
+                <button type="button" class="mobile-filter-section-title" aria-expanded="true">획득년월</button>
+                <div class="mobile-filter-section-body mobile-month-grid">
+                  <select id="mobileExclusivePeriodPreset">
+                    <option value="12m" selected>최근 1년</option>
+                    <option value="all">전체</option>
+                    <option value="custom">직접 선택</option>
+                  </select>
+                  <input id="mobileExclusiveMonthFrom" type="month" />
+                  <input id="mobileExclusiveMonthTo" type="month" />
+                </div>
+              </section>
+              <section class="mobile-filter-section">
+                <button type="button" class="mobile-filter-section-title" aria-expanded="true">키워드</button>
+                <div class="mobile-filter-section-body">
+                  <input id="mobileExclusiveKeyword" class="keyword-search" type="search" placeholder="상품/특약/제도명, 특징, 기사제목 검색" />
+                </div>
+              </section>
+            </div>
+            <div class="mobile-filter-actions">
+              <button id="resetMobileExclusiveFilter" type="button" class="secondary">초기화</button>
+              <button id="applyMobileExclusiveFilter" type="button">적용</button>
+            </div>
+          </div>
+        </div>
+        <div class="exclusive-list-filters desktop-only">
+          <label>
+            <span>업종</span>
+            <select id="exclusiveRightInsuranceType">
+              <option value="">전체</option>
+              <option value="생명보험">생명보험</option>
+              <option value="손해보험">손해보험</option>
+            </select>
+          </label>
+          <div class="filter-field">
+            <span>회사</span>
+            <div id="exclusiveRightCompanyFilter" class="checkbox-select">
+              <div class="select-all-line">
+                <button id="exclusiveRightCompanyNamesAll" type="button" class="select-all-button" aria-pressed="true">전체선택</button>
+              </div>
+              <div id="exclusiveRightCompanyNames" class="checkbox-list"></div>
+            </div>
+          </div>
+          <label>
+            <span>기간</span>
+            <select id="exclusiveRightPeriodPreset">
+              <option value="12m" selected>최근 1년</option>
+              <option value="all">전체</option>
+              <option value="custom">직접 선택</option>
+            </select>
+          </label>
+          <label>
+            <span>시작월</span>
+            <input id="exclusiveRightMonthFrom" type="month" />
+          </label>
+          <label>
+            <span>종료월</span>
+            <input id="exclusiveRightMonthTo" type="month" />
+          </label>
+          <label>
+            <span>키워드</span>
+            <input id="exclusiveRightKeyword" class="keyword-search" type="search" placeholder="상품/특약/제도명, 특징, 기사제목 검색" />
+          </label>
+          <button id="exclusiveRightSearch" type="button" class="button-with-icon">
+            <span class="button-text">배타적사용권 조회</span>
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m16.5 16.5 4 4"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="exclusiveRightListMessage" class="muted"></div>
+        <div class="table-wrap desktop-results">
+          <table id="exclusiveRightListTable"></table>
+        </div>
+        <div id="mobileExclusiveCards" class="mobile-results mobile-only mobile-exclusive-section"></div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', path='dashboard.js') }}?v=20260601-mobile-view-switch"></script>
+  </body>
+</html>

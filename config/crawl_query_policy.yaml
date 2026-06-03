@@ -1,0 +1,15 @@
+date_filtering:
+  naver_has_date_range_parameter: false
+  apply_range_by: pubDate_post_filter
+  automatic_month_keyword:
+    enabled: false
+    reason: "월 표현이 없는 보험 신상품 기사 누락을 줄이기 위해 자동 query에는 날짜 문자열을 넣지 않는다."
+admin_preview:
+  arbitrary_query_allowed: true
+  month_keyword_allowed_for_diagnostics: true
+query_layers:
+  - common_new_product
+  - product_group
+  - company
+  - company_product_group
+  - product_followup_from_db

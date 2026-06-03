@@ -1,0 +1,161 @@
+DEATH_WHOLELIFE:
+  name_ko: 사망(종신/정기)
+  strong: ["종신보험", "정기보험", "사망보험", "일반사망", "사망보험금"]
+  medium: ["종신", "정기", "사망보장", "사망"]
+  risk_area: ["사망"]
+  benefit_type: ["사망"]
+  default_role: primary
+  priority: 10
+
+HEALTH_COMPREHENSIVE:
+  name_ko: 건강(종합)
+  strong: ["건강보험", "종합보험", "종합건강보험"]
+  medium: ["질병", "수술비", "입원", "통원", "건강"]
+  risk_area: ["질병", "상해"]
+  benefit_type: ["수술", "입원", "통원", "치료"]
+  default_role: primary
+  priority: 80
+
+SPECIFIC_DISEASE:
+  name_ko: 특정질병/중대질병
+  strong: ["면역질환보험", "심뇌혈관보험", "뇌혈관보험", "심장질환보험", "특정질병보험", "중대질병보험", "GI보험", "CI보험"]
+  medium: ["자가면역질환", "대상포진", "통풍", "갑상선", "당뇨", "관절", "척추", "뇌혈관", "허혈성심장질환", "심혈관", "면역질환", "중증질환"]
+  risk_area: ["질병", "뇌혈관", "허혈성심장질환", "면역", "관절", "척추", "갑상선", "통풍"]
+  benefit_type: ["진단", "치료", "수술", "입원"]
+  default_role: primary
+  priority: 25
+
+CANCER:
+  name_ko: 암보험
+  strong: ["암보험"]
+  medium: ["암진단", "암진단비", "항암", "암수술", "암치료"]
+  risk_area: ["암"]
+  benefit_type: ["진단", "치료", "수술", "입원"]
+  default_role: primary
+  priority: 20
+
+MEDICAL_INDEMNITY:
+  name_ko: 실손의료
+  strong: ["실손의료보험", "실손보험", "실비보험", "단독실손", "노후실손", "유병력자실손"]
+  medium: ["의료비", "비급여", "급여", "본인부담금", "4세대 실손", "5세대 실손"]
+  risk_area: ["의료비"]
+  benefit_type: ["실손", "치료"]
+  default_role: primary
+  priority: 15
+
+ACCIDENT_DRIVER:
+  name_ko: 상해 및 운전자
+  strong: ["운전자보험", "운전자"]
+  medium: ["교통사고처리지원금", "변호사선임비용", "벌금", "상해"]
+  risk_area: ["운전자", "상해"]
+  benefit_type: ["비용보상", "법률비용", "후유장해"]
+  default_role: primary
+  priority: 30
+
+AUTO:
+  name_ko: 자동차
+  strong: ["자동차보험", "다이렉트 자동차보험", "개인용 자동차보험", "업무용 자동차보험"]
+  medium: ["자동차 사고", "대인배상", "대물배상", "자차", "자동차보험료", "마일리지 특약"]
+  risk_area: ["자동차"]
+  benefit_type: ["배상", "차량손해"]
+  default_role: primary
+  priority: 18
+
+SIMPLIFIED_IMPAIRED:
+  name_ko: 간편(유병자)
+  strong: ["간편보험", "유병자보험", "간편고지", "무고지", "간편심사"]
+  medium: ["유병자", "고령자", "무심사", "고지항목", "간편"]
+  risk_area: []
+  benefit_type: []
+  default_role: secondary
+  priority: 70
+
+DEMENTIA_CARE:
+  name_ko: 치매간병
+  strong: ["치매보험", "간병보험", "치매간병", "장기요양보험", "간병인보험"]
+  medium: ["치매", "간병", "장기요양", "간병인"]
+  risk_area: ["치매", "간병"]
+  benefit_type: ["진단", "일당", "치료"]
+  default_role: primary
+  priority: 40
+
+CHILD_ADULT_CHILD:
+  name_ko: 어린이/어른이
+  strong: ["어린이보험", "자녀보험", "태아보험", "어른이보험"]
+  medium: ["어린이", "자녀", "태아", "어른이"]
+  risk_area: ["질병", "상해"]
+  benefit_type: ["진단", "수술", "입원"]
+  default_role: primary
+  priority: 60
+
+DENTAL:
+  name_ko: 치아
+  strong: ["치아보험", "치과보험"]
+  medium: ["임플란트", "크라운", "브릿지", "틀니", "보존치료", "보철치료", "충치", "치주질환"]
+  risk_area: ["치아"]
+  benefit_type: ["치료", "보철", "보존"]
+  default_role: primary
+  priority: 22
+
+PET:
+  name_ko: 펫/반려동물
+  strong: ["펫보험", "반려동물보험", "동물보험", "강아지보험", "고양이보험"]
+  medium: ["반려견", "반려묘", "동물병원", "반려동물 치료비", "슬개골", "피부질환", "마이브라운"]
+  risk_area: ["반려동물"]
+  benefit_type: ["치료", "수술"]
+  default_role: primary
+  priority: 24
+
+TRAVEL_LEISURE:
+  name_ko: 여행/레저
+  strong: ["여행자보험", "해외여행보험", "국내여행보험", "유학생보험", "장기체류보험", "골프보험", "레저보험"]
+  medium: ["휴대품손해", "항공기 지연", "여행 중", "해외 체류", "수하물"]
+  risk_area: ["여행", "레저"]
+  benefit_type: ["비용보상", "상해", "손해"]
+  default_role: primary
+  priority: 26
+
+PROPERTY_EXPENSE:
+  name_ko: 재물 및 비용
+  strong: ["화재보험", "재물보험", "배상책임보험", "주택화재보험"]
+  medium: ["화재", "재물", "배상책임", "비용손해", "손해보상"]
+  risk_area: ["화재손해", "재물", "배상책임"]
+  benefit_type: ["손해보상", "배상책임", "비용보상"]
+  default_role: primary
+  priority: 50
+
+GUARANTEE_CREDIT:
+  name_ko: 보증/신용
+  strong: ["보증보험", "신용보험", "이행보증", "전세금보장", "전세보증"]
+  medium: ["계약이행", "지급보증", "보증서", "임대차보증금"]
+  risk_area: ["보증", "신용"]
+  benefit_type: ["보증"]
+  default_role: primary
+  priority: 28
+
+ANNUITY_SAVINGS:
+  name_ko: 연금/저축
+  strong: ["연금보험", "연금저축보험", "저축보험", "교육보험"]
+  medium: ["노후자금", "목적자금", "세제적격", "세제비적격", "공시이율", "적립", "만기환급"]
+  risk_area: ["저축", "연금"]
+  benefit_type: ["연금", "저축"]
+  default_role: primary
+  priority: 35
+
+VARIABLE_UL:
+  name_ko: 변액/유니버셜
+  strong: ["변액보험", "변액종신", "변액연금", "변액유니버셜", "유니버셜보험"]
+  medium: ["펀드", "특별계정", "투자형", "적립투자형"]
+  risk_area: []
+  benefit_type: []
+  default_role: secondary
+  priority: 85
+
+CORPORATE_GROUP_SPECIALTY:
+  name_ko: 기업/단체/특종
+  strong: ["단체보험", "기업보험", "해상보험", "적하보험", "전문직배상책임", "특종보험"]
+  medium: ["임직원", "단체상해", "기업성보험", "생산물배상책임", "영업배상책임", "기술보험", "선박", "화물"]
+  risk_area: ["기업", "단체", "특종"]
+  benefit_type: ["배상책임", "손해"]
+  default_role: primary
+  priority: 55

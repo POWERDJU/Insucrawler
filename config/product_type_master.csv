@@ -1,0 +1,21 @@
+product_type_code,product_type_name_ko,sort_order,pivot_enabled,active_yn,description
+DEATH_WHOLELIFE,사망(종신/정기),10,Y,Y,종신보험·정기보험 등 사망보장 중심 상품
+HEALTH_COMPREHENSIVE,건강(종합),20,Y,Y,질병·상해·진단·수술·입원 등을 종합 보장하는 건강보험
+SPECIFIC_DISEASE,특정질병/중대질병,25,Y,Y,암·치매 외 특정 질병 또는 중대질병 중심 상품
+CANCER,암보험,30,Y,Y,암 진단·치료·수술·입원 중심 상품
+MEDICAL_INDEMNITY,실손의료,35,Y,Y,실손의료보험·실비보험·노후실손·유병력자실손
+ACCIDENT_DRIVER,상해 및 운전자,40,Y,Y,상해보험 및 운전자 비용보장 상품
+AUTO,자동차,45,Y,Y,자동차보험·다이렉트 자동차보험
+SIMPLIFIED_IMPAIRED,간편(유병자),50,Y,Y,간편고지·유병자·고령자·무고지 상품
+DEMENTIA_CARE,치매간병,60,Y,Y,치매·장기요양·간병·간병인 보장 상품
+CHILD_ADULT_CHILD,어린이/어른이,70,Y,Y,어린이보험·자녀보험·태아보험·어른이보험
+DENTAL,치아,75,Y,Y,치아보험·임플란트·보철·보존치료 보장
+PET,펫/반려동물,80,Y,Y,펫보험·반려동물보험·동물보험
+TRAVEL_LEISURE,여행/레저,85,Y,Y,국내외 여행보험·유학생보험·장기체류·골프·레저보험
+PROPERTY_EXPENSE,재물 및 비용,90,Y,Y,화재·재물손해·배상책임·생활비용·비용손해
+GUARANTEE_CREDIT,보증/신용,95,Y,Y,보증보험·신용보험·이행보증·전세금보장
+ANNUITY_SAVINGS,연금/저축,100,Y,Y,연금보험·연금저축·저축보험·교육보험
+VARIABLE_UL,변액/유니버셜,105,Y,Y,변액보험·변액종신·변액연금·유니버셜보험
+CORPORATE_GROUP_SPECIALTY,기업/단체/특종,110,Y,Y,기업보험·단체보험·해상·적하·특종·전문직배상책임
+OTHER,기타,900,Y,Y,위 분류에 명확히 속하지 않는 상품
+UNKNOWN,분류불명,999,Y,Y,정보 부족으로 분류 불가

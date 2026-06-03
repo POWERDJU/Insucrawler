@@ -1,0 +1,53 @@
+launch_keywords:
+  - 신상품
+  - 신규 출시
+  - 출시
+  - 선보였다
+  - 내놨다
+  - 판매 개시
+  - 출시했다
+product_type_keywords:
+  CANCER: [암보험, 암 진단, 항암]
+  HEALTH_COMPREHENSIVE: [건강보험, 질병보험, 종합건강]
+  SPECIFIC_DISEASE: [면역질환보험, 심뇌혈관, 뇌혈관, 심장질환, 통풍, 갑상선]
+  MEDICAL_INDEMNITY: [실손보험, 실손의료, 실비보험]
+  ACCIDENT_DRIVER: [운전자보험, 상해보험]
+  AUTO: [자동차보험]
+  DENTAL: [치아보험]
+  PET: [펫보험, 반려동물보험]
+  TRAVEL_LEISURE: [여행자보험, 골프보험, 레저보험]
+  ANNUITY_SAVINGS: [연금보험, 저축보험]
+coverage_keywords:
+  - 보장
+  - 진단비
+  - 수술비
+  - 입원
+  - 치료
+  - 사망
+  - 후유장해
+  - 배상책임
+  - 보험금
+  - 최대
+sales_metric_keywords:
+  - 판매건수
+  - 판매 건수
+  - 월초보험료
+  - 보장월초보험료
+  - 누적보험료
+  - 초회보험료
+  - 돌파
+negative_keywords:
+  - 인사
+  - 채용
+  - 사회공헌
+  - 봉사
+  - 주가
+  - 배당
+  - 캠페인
+  - 이벤트
+  - 임원
+  - 실적발표
+thresholds:
+  high: 0.70
+  medium: 0.40
+  low: 0.20
