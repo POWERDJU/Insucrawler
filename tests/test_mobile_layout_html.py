@@ -67,6 +67,9 @@ def test_mobile_javascript_functions_exist():
         "renderMobileCoverageCards",
         "renderMobileExclusiveCards",
         "setActiveMobileView",
+        "handleMobileOverlayPopState",
+        "pushMobileOverlayHistory",
+        "closeCurrentMobileOverlay",
     ]:
         assert f"function {name}" in js or f"async function {name}" in js
 

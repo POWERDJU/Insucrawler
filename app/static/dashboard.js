@@ -13,6 +13,11 @@ const state = {
   exclusiveRightListLoaded: false,
   exclusiveRightListUserTouched: false,
   activeMobileView: "products",
+  mobileOverlayNames: {
+    productFilter: "mobile-product-filter",
+    exclusiveFilter: "mobile-exclusive-filter",
+    productDetail: "mobile-product-detail",
+  },
   adminToken: sessionStorage.getItem("adminToken") || null,
   adminPollTimer: null,
 };
@@ -1041,8 +1046,49 @@ function isMobileViewport() {
   return window.matchMedia("(max-width: 767px)").matches;
 }
 
+function pushMobileOverlayHistory(overlayName) {
+  if (!isMobileViewport() || !overlayName || !window.history?.pushState) return;
+  if (window.history.state?.mobileOverlay === overlayName) return;
+  window.history.pushState({ ...(window.history.state || {}), mobileOverlay: overlayName }, "", window.location.href);
+}
+
+function shouldCloseViaHistory(overlayName, options = {}) {
+  return !options.fromHistory && isMobileViewport() && window.history.state?.mobileOverlay === overlayName;
+}
+
+function currentVisibleMobileOverlay() {
+  if (!document.getElementById("mobileProductDetailModal")?.hidden) return state.mobileOverlayNames.productDetail;
+  if (!document.getElementById("mobileExclusiveFilterSheet")?.hidden) return state.mobileOverlayNames.exclusiveFilter;
+  if (!document.getElementById("mobileFilterSheet")?.hidden) return state.mobileOverlayNames.productFilter;
+  return null;
+}
+
+function handleMobileOverlayPopState() {
+  if (!isMobileViewport()) return;
+  closeCurrentMobileOverlay({ fromHistory: true });
+}
+
+function closeCurrentMobileOverlay(options = {}) {
+  const overlayName = currentVisibleMobileOverlay();
+  if (!overlayName) return false;
+  if (overlayName === state.mobileOverlayNames.productDetail) {
+    closeMobileProductDetail(options);
+    return true;
+  }
+  if (overlayName === state.mobileOverlayNames.exclusiveFilter) {
+    closeMobileExclusiveFilterSheet(options);
+    return true;
+  }
+  if (overlayName === state.mobileOverlayNames.productFilter) {
+    closeMobileFilterSheet(options);
+    return true;
+  }
+  return false;
+}
+
 function initMobileLayout() {
   setActiveMobileView(state.activeMobileView);
+  window.addEventListener("popstate", handleMobileOverlayPopState);
   document.querySelectorAll("[data-mobile-view-tab]").forEach((button) => {
     button.addEventListener("click", () => setActiveMobileView(button.dataset.mobileViewTab));
   });
@@ -1109,6 +1155,7 @@ function initMobileLayout() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (closeCurrentMobileOverlay()) return;
     closeMobileFilterSheet();
     closeMobileExclusiveFilterSheet();
     closeMobileProductDetail();
@@ -1124,10 +1171,10 @@ async function setActiveMobileView(view) {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
   });
-  closeMobileFilterSheet();
-  closeMobileExclusiveFilterSheet();
+  closeMobileFilterSheet({ fromHistory: true });
+  closeMobileExclusiveFilterSheet({ fromHistory: true });
   if (normalized === "exclusive-rights") {
-    closeMobileProductDetail();
+    closeMobileProductDetail({ fromHistory: true });
     stopMonthlyBoardTimer();
     startExclusiveBoardTimer();
     if (!state.exclusiveRightListLoaded) {
@@ -1313,14 +1360,24 @@ function openMobileFilterSheet(type = "product") {
   if (type === "exclusive") {
     updateMobileExclusiveFilterSummary();
     document.getElementById("mobileExclusiveFilterSheet").hidden = false;
+    pushMobileOverlayHistory(state.mobileOverlayNames.exclusiveFilter);
   } else {
     syncDesktopFiltersToMobile();
     document.getElementById("mobileFilterSheet").hidden = false;
+    pushMobileOverlayHistory(state.mobileOverlayNames.productFilter);
   }
   document.body.classList.add("mobile-scroll-lock");
 }
 
-function closeMobileFilterSheet() {
+function closeMobileFilterSheet(options = {}) {
+  if (shouldCloseViaHistory(state.mobileOverlayNames.productFilter, options)) {
+    window.history.back();
+    return;
+  }
+  hideMobileFilterSheet();
+}
+
+function hideMobileFilterSheet() {
   const sheet = document.getElementById("mobileFilterSheet");
   if (sheet) sheet.hidden = true;
   if (document.getElementById("mobileExclusiveFilterSheet")?.hidden && document.getElementById("mobileProductDetailModal")?.hidden) {
@@ -1328,7 +1385,15 @@ function closeMobileFilterSheet() {
   }
 }
 
-function closeMobileExclusiveFilterSheet() {
+function closeMobileExclusiveFilterSheet(options = {}) {
+  if (shouldCloseViaHistory(state.mobileOverlayNames.exclusiveFilter, options)) {
+    window.history.back();
+    return;
+  }
+  hideMobileExclusiveFilterSheet();
+}
+
+function hideMobileExclusiveFilterSheet() {
   const sheet = document.getElementById("mobileExclusiveFilterSheet");
   if (sheet) sheet.hidden = true;
   if (document.getElementById("mobileFilterSheet")?.hidden && document.getElementById("mobileProductDetailModal")?.hidden) {
@@ -1410,6 +1475,7 @@ async function openMobileProductDetail(productId) {
   if (!modal || !content) return;
   modal.hidden = false;
   document.body.classList.add("mobile-scroll-lock");
+  pushMobileOverlayHistory(state.mobileOverlayNames.productDetail);
   content.innerHTML = '<div class="detail-empty">상품 상세를 불러오는 중입니다.</div>';
   try {
     const product = await getJson(`/api/products/${productId}`);
@@ -1419,7 +1485,15 @@ async function openMobileProductDetail(productId) {
   }
 }
 
-function closeMobileProductDetail() {
+function closeMobileProductDetail(options = {}) {
+  if (shouldCloseViaHistory(state.mobileOverlayNames.productDetail, options)) {
+    window.history.back();
+    return;
+  }
+  hideMobileProductDetail();
+}
+
+function hideMobileProductDetail() {
   const modal = document.getElementById("mobileProductDetailModal");
   if (modal) modal.hidden = true;
   if (document.getElementById("mobileFilterSheet")?.hidden && document.getElementById("mobileExclusiveFilterSheet")?.hidden) {

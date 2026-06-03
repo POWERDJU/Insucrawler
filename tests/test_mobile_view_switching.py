@@ -67,6 +67,25 @@ def test_mobile_filter_paths_remain_independent():
     assert "syncDesktopExclusiveFiltersToMobile" not in open_body
 
 
+def test_mobile_browser_back_closes_open_overlay_instead_of_leaving_app():
+    assert "mobileOverlayNames" in JS
+    assert 'window.addEventListener("popstate", handleMobileOverlayPopState)' in JS
+    assert "window.history.pushState" in JS
+
+    open_detail_body = _function_body("openMobileProductDetail")
+    close_detail_body = _function_body("closeMobileProductDetail")
+    popstate_body = _function_body("handleMobileOverlayPopState")
+    close_current_body = _function_body("closeCurrentMobileOverlay")
+    switch_body = _function_body("setActiveMobileView")
+
+    assert "pushMobileOverlayHistory(state.mobileOverlayNames.productDetail)" in open_detail_body
+    assert "shouldCloseViaHistory(state.mobileOverlayNames.productDetail" in close_detail_body
+    assert "window.history.back()" in close_detail_body
+    assert "closeCurrentMobileOverlay({ fromHistory: true })" in popstate_body
+    assert "closeMobileProductDetail(options)" in close_current_body
+    assert "closeMobileProductDetail({ fromHistory: true })" in switch_body
+
+
 def test_mobile_card_renderers_keep_condensed_fields():
     product_body = _function_body("renderMobileProductCards")
     exclusive_body = _function_body("renderMobileExclusiveCards")
