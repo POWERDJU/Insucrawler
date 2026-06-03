@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.db.models import DimCompany, DimProduct, FactLLMRun
+from app.db.models import DimCompany, DimProduct, DimProductAlias, FactLLMRun
 from app.services.product_consolidation_service import ProductConsolidationService
 
 
@@ -38,6 +38,19 @@ def _product(db_session, company: DimCompany, name: str, month: str = "2026-04")
     return row
 
 
+def _alias(db_session, product: DimProduct, name: str) -> None:
+    db_session.add(
+        DimProductAlias(
+            product_id=product.product_id,
+            raw_product_name=name,
+            normalized_product_name_candidate=name,
+            product_core_key=name.replace(" ", "").casefold(),
+            company_id=product.company_id,
+            source_type="test",
+        )
+    )
+
+
 def test_signature_women_same_version_variants_merge_without_llm(db_session):
     company = _company(db_session)
     _product(db_session, company, "시그니처 여성 건강보험 4.0")
@@ -63,4 +76,27 @@ def test_signature_women_versionless_name_does_not_bridge_3_and_4(db_session):
 
     assert result["auto_merge_count"] == 0
     assert db_session.query(DimProduct).filter(DimProduct.product_status != "merged").count() == 3
+    assert db_session.query(FactLLMRun).count() == 0
+
+
+def test_versioned_alias_promotes_series_version_into_display_name(db_session):
+    company = _company(db_session)
+    product_3 = _product(db_session, company, "Signature Women Health Insurance", month="2026-02")
+    product_4 = _product(db_session, company, "Women Health Insurance", month="2026-01")
+    _alias(db_session, product_3, "Signature Women Health Insurance 3.0")
+    _alias(db_session, product_4, "Signature Women Health Insurance 4.0 무배당")
+    _alias(db_session, product_4, "Signature Women Insurance 4.0")
+    db_session.commit()
+
+    result = ProductConsolidationService().run(db_session, mode="rule_only_apply", target="all", limit=0)
+    db_session.refresh(product_3)
+    db_session.refresh(product_4)
+
+    assert result["auto_merge_count"] == 0
+    assert result["versioned_display_update_count"] == 2
+    assert "3.0" in product_3.normalized_product_name
+    assert "4.0" in product_4.normalized_product_name
+    assert not product_4.normalized_product_name.endswith("무배당")
+    assert product_3.product_status == "active"
+    assert product_4.product_status == "active"
     assert db_session.query(FactLLMRun).count() == 0

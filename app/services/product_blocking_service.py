@@ -494,7 +494,8 @@ class ProductBlockingService:
     def _same_company_family_block(self, left: ProductBlockCandidate, right: ProductBlockCandidate) -> bool:
         if not left.company_id or left.company_id != right.company_id:
             return False
-        if self._month_distance_too_far(left.release_year_month, right.release_year_month, max_months=3):
+        month_window = 6 if self._birth_benefit_component_match(left, right) else 3
+        if self._month_distance_too_far(left.release_year_month, right.release_year_month, max_months=month_window):
             return False
         if self._specific_family_conflicts(left, right):
             return False

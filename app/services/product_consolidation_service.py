@@ -9,6 +9,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    DimCompany,
     DimProduct,
     FactProductConsolidationBlock,
     FactProductConsolidationJob,
@@ -18,7 +19,14 @@ from app.db.models import (
 from app.services.product_blocking_service import ProductBlock, ProductBlockCandidate, ProductBlockingService
 from app.services.product_canonicalization_service import ProductCanonicalizationService
 from app.services.product_duplicate_guard_service import ProductDuplicateGuardService
-from app.normalizers.product_name_normalizer import is_generic_product_family_signature
+from app.normalizers.product_name_normalizer import (
+    build_product_identity_key,
+    is_generic_product_family_signature,
+    normalize_product_name,
+    product_core_key_candidates,
+    product_search_key,
+    version_signature,
+)
 from app.utils.dates import utcnow
 
 
@@ -72,6 +80,7 @@ class ProductConsolidationService:
             job.target_new_product_count = min(limit, db.query(DimProduct).filter(DimProduct.product_status != "merged").count())
             auto_merge_count = 0
             review_count = 0
+            versioned_display_update_count = 0
             for block in blocks:
                 block_row = self._create_block_row(db, job, block)
                 canonical = self._select_canonical(db, block)
@@ -106,12 +115,16 @@ class ProductConsolidationService:
                     else:
                         block_row.status = "no_merge"
                 db.flush()
+            if mode in AUTO_MERGE_MODES:
+                versioned_display_update_count = self._promote_versioned_display_names(db, target=target, limit=limit)
             job.auto_merge_count = auto_merge_count
             job.manual_review_count = review_count
             job.status = "completed"
             job.finished_at = utcnow()
             db.commit()
-            return self.get_job_detail(db, job.consolidation_job_id)
+            detail = self.get_job_detail(db, job.consolidation_job_id)
+            detail["versioned_display_update_count"] = versioned_display_update_count
+            return detail
         except Exception as exc:
             job.status = "failed"
             job.error_message = str(exc)
@@ -261,6 +274,121 @@ class ProductConsolidationService:
             use_llm_for_gray_blocks=False,
         )
         return True
+
+    def _promote_versioned_display_names(self, db: Session, *, target: str, limit: int) -> int:
+        """Use version-bearing aliases/observations to repair canonical names.
+
+        The extractor sometimes saves a canonical product row with a broad
+        family name, while its aliases or observations carry the real series
+        version (for example 3.0 or 4.0). Merging rules already keep different
+        versions apart; this pass keeps the visible canonical name aligned with
+        that protected identity without using an LLM or hardcoded product names.
+        """
+        updated_count = 0
+        candidates = self.blocking_service._load_candidates(db, target=target, limit=limit)
+        for candidate in candidates:
+            if len(candidate.version_signature) != 1:
+                continue
+            product = db.get(DimProduct, candidate.product_id)
+            if not product or product.product_status in {"merged", "rejected"}:
+                continue
+            display_versions = version_signature(product.normalized_product_name)
+            if display_versions and display_versions != candidate.version_signature:
+                continue
+            company = db.get(DimCompany, product.company_id) if product.company_id else None
+            company_aliases = self._company_aliases(company)
+            proposed_name = self._best_versioned_display_name(product, candidate, company_aliases)
+            if not proposed_name:
+                continue
+            normalized_name = normalize_product_name(proposed_name, company_aliases)
+            if version_signature(normalized_name) != candidate.version_signature:
+                continue
+            if normalized_name == product.normalized_product_name:
+                continue
+            product.normalized_product_name = normalized_name
+            if not version_signature(product.raw_product_name):
+                product.raw_product_name = normalized_name
+            core_candidates = product_core_key_candidates(normalized_name, company_aliases)
+            if core_candidates:
+                product.product_core_key = core_candidates[0]
+            product.product_identity_key = build_product_identity_key(product.company_id, normalized_name, company_aliases)
+            company_name_for_key = company.company_name_normalized if company else None
+            search_key = product_search_key(normalized_name, company_name_for_key)
+            if not self._search_key_conflicts(db, product, search_key):
+                product.product_search_key = search_key
+            updated_count += 1
+        if updated_count:
+            db.flush()
+        return updated_count
+
+    def _best_versioned_display_name(
+        self,
+        product: DimProduct,
+        candidate: ProductBlockCandidate,
+        company_aliases: list[str],
+    ) -> str | None:
+        desired_versions = candidate.version_signature
+        raw_names = [
+            candidate.name,
+            product.normalized_product_name,
+            product.raw_product_name,
+            *candidate.alias_names,
+        ]
+        scored: list[tuple[tuple[int, int, int, int, int], str]] = []
+        for raw_name in dict.fromkeys(item for item in raw_names if item):
+            if version_signature(raw_name) != desired_versions:
+                continue
+            normalized_name = self._display_name_candidate(normalize_product_name(raw_name, company_aliases))
+            if not normalized_name or version_signature(normalized_name) != desired_versions:
+                continue
+            compact_name = self.blocking_service._compact(normalized_name)
+            if not compact_name:
+                continue
+            token_hits = 0
+            for token in candidate.family_tokens:
+                compact_token = self.blocking_service._compact(token)
+                if compact_token and compact_token in compact_name:
+                    token_hits += 1
+            signature_base = (candidate.family_signature or "").split("|v:", 1)[0]
+            compact_signature = self.blocking_service._compact(signature_base)
+            signature_hit = int(bool(compact_signature and compact_signature in compact_name))
+            current_base = self.blocking_service._compact(candidate.name)
+            current_overlap = int(bool(current_base and (current_base in compact_name or compact_name in current_base)))
+            length_score = -abs(len(compact_name) - 16)
+            brevity = -len(compact_name)
+            scored.append(((signature_hit, token_hits, current_overlap, length_score, brevity), normalized_name))
+        if not scored:
+            return None
+        return sorted(scored, key=lambda item: item[0], reverse=True)[0][1]
+
+    @staticmethod
+    def _display_name_candidate(name: str | None) -> str:
+        value = (name or "").strip()
+        for suffix in ("무배당형", "무배당", "비갱신형", "갱신형"):
+            if value.endswith(suffix):
+                value = value[: -len(suffix)].strip()
+        return value
+
+    @staticmethod
+    def _company_aliases(company: DimCompany | None) -> list[str]:
+        if not company:
+            return []
+        aliases = [company.company_name_normalized, company.company_name_raw]
+        aliases.extend(item.strip() for item in (company.alias or "").split("|") if item.strip())
+        return [item for item in dict.fromkeys(alias for alias in aliases if alias)]
+
+    @staticmethod
+    def _search_key_conflicts(db: Session, product: DimProduct, search_key: str) -> bool:
+        return (
+            db.query(DimProduct.product_id)
+            .filter(
+                DimProduct.company_id == product.company_id,
+                DimProduct.product_search_key == search_key,
+                DimProduct.product_id != product.product_id,
+            )
+            .first()
+            is not None
+        )
 
     def _create_block_row(self, db: Session, job: FactProductConsolidationJob, block: ProductBlock) -> FactProductConsolidationBlock:
         block_row = FactProductConsolidationBlock(
@@ -451,11 +579,11 @@ class ProductConsolidationService:
         if self.blocking_service._specific_family_conflicts(canonical_candidate, duplicate):
             return None, 0.0, "specific product family differs"
 
-        if same_company and close_month_3 and self.blocking_service._birth_benefit_component_match(canonical_candidate, duplicate):
+        if same_company and close_month_6 and self.blocking_service._birth_benefit_component_match(canonical_candidate, duplicate):
             return (
                 "deterministic_same_company_birth_benefit_component",
                 0.93,
-                "same company close-month birth/pregnancy benefit component family",
+                "same company birth/pregnancy benefit component family within six months",
             )
 
         if same_company and close_month_3 and self._optional_modifier_identity(canonical_candidate, duplicate):

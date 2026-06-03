@@ -45,8 +45,9 @@ def test_birth_benefit_variants_merge_as_same_component_family(db_session):
         "출산지원금 보장 특약",
         "출산 혜택 보험료 유예 특약",
     ]
-    for name in names:
-        _product(db_session, company, name)
+    months = ["2025-10", "2026-04", "2026-02"]
+    for name, month in zip(names, months):
+        _product(db_session, company, name, month=month)
     db_session.commit()
 
     result = ProductConsolidationService().run(db_session, mode="rule_only_apply", target="all", limit=0)

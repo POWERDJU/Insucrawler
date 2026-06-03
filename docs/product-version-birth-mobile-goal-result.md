@@ -1,7 +1,7 @@
 # Product Version/Birth/Mobile Goal Check
 
 - status: PASS
-- checked_at: 2026-06-04T00:08:52
+- checked_at: 2026-06-04T00:23:08
 - command: `C:\Users\User\AppData\Local\Programs\Python\Python313\python.exe -m pytest -q tests/test_product_signature_series_version_policy.py tests/test_product_birth_benefit_consolidation.py tests/test_product_release_month_resolver_version_aware.py tests/test_product_detail_coverage_dedupe_shared.py`
 
 ## Scope
@@ -16,10 +16,11 @@
 ## Pytest Output
 
 ```text
-........                                                                 [100%]
+.........                                                                [100%]
 ============================== warnings summary ===============================
 tests/test_product_signature_series_version_policy.py::test_signature_women_same_version_variants_merge_without_llm
 tests/test_product_signature_series_version_policy.py::test_signature_women_versionless_name_does_not_bridge_3_and_4
+tests/test_product_signature_series_version_policy.py::test_versioned_alias_promotes_series_version_into_display_name
 tests/test_product_birth_benefit_consolidation.py::test_birth_benefit_variants_merge_as_same_component_family
 tests/test_product_birth_benefit_consolidation.py::test_birth_benefit_component_does_not_merge_into_signature_body_product
 tests/test_product_release_month_resolver_version_aware.py::test_release_month_ignores_other_version_and_followup_articles
