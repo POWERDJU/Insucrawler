@@ -416,6 +416,8 @@ class ProductConsolidationService:
             return None, 0.0, "version differs"
         if canonical_candidate.version_signature and duplicate.version_signature and canonical_candidate.version_signature != duplicate.version_signature:
             return None, 0.0, "version differs"
+        if self.duplicate_guard._versionless_ambiguous_pair(canonical_candidate, duplicate, block.candidates):
+            return None, 0.0, "versionless alias is ambiguous across product versions"
         if canonical.product_core_key and duplicate.core_key and canonical.product_core_key == duplicate.core_key:
             return "deterministic_core_key", 0.98, "same company and product_core_key"
 
@@ -448,6 +450,13 @@ class ProductConsolidationService:
 
         if self.blocking_service._specific_family_conflicts(canonical_candidate, duplicate):
             return None, 0.0, "specific product family differs"
+
+        if same_company and close_month_3 and self.blocking_service._birth_benefit_component_match(canonical_candidate, duplicate):
+            return (
+                "deterministic_same_company_birth_benefit_component",
+                0.93,
+                "same company close-month birth/pregnancy benefit component family",
+            )
 
         if same_company and close_month_3 and self._optional_modifier_identity(canonical_candidate, duplicate):
             return (

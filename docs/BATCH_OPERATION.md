@@ -17,6 +17,17 @@ Backfill LLM processing should still follow the low-cost route: screening first,
 Backfill should use `enqueue_only` or `batch`. Realtime extraction no longer processes all pending articles globally; it is limited to the current `crawl_job_id`.
 CLI helpers follow the same guardrail: `extract_pending_articles.py`, `extract_crawl_job_articles.py`, and `reprocess_collected_articles.py` default to queue-oriented modes unless `--extraction-mode realtime` is explicitly selected. Weekly jobs can set `WEEKLY_UPDATE_EXTRACTION_MODE`.
 
+Before trusting a product backfill/export after consolidation changes, run the
+version/birth/mobile regression gate:
+
+```powershell
+python scripts/run_product_version_birth_mobile_goal_check.py
+```
+
+It verifies version-aware Signature Women consolidation, birth-benefit component
+consolidation, version-compatible release-month selection, and shared PC/mobile
+coverage dedupe without crawling, reparsing, or calling Gemini/Qwen.
+
 # Batch Operation
 
 뉴스 수집 배치는 `CrawlJobService`를 공통 실행 경로로 사용한다. 관리자 API, 관리자 화면, CLI 스크립트가 같은 job/task/event 테이블을 사용하므로 어느 경로로 실행해도 진행률과 오류를 같은 방식으로 확인할 수 있다.

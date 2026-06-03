@@ -134,6 +134,7 @@ PARTNER_ALIASES = {
 
 WEAK_CANDIDATE_TYPES = {"weak_mention", "pronoun_or_context_reference"}
 REJECTED_CANDIDATE_TYPES = {"rejected"}
+BIRTH_BENEFIT_FAMILY_TOKENS = {"출산지원"}
 
 
 @dataclass
@@ -466,6 +467,8 @@ class ProductBlockingService:
             return False
         if left.version_signature and right.version_signature and left.version_signature != right.version_signature:
             return False
+        if self._birth_component_conflicts(left, right):
+            return False
         if left.core_key and right.core_key and left.core_key == right.core_key:
             return True
         if left.observation_ids.intersection(right.observation_ids):
@@ -495,6 +498,8 @@ class ProductBlockingService:
             return False
         if self._specific_family_conflicts(left, right):
             return False
+        if self._birth_benefit_component_match(left, right):
+            return True
         if left.family_signature and right.family_signature and left.family_signature == right.family_signature:
             if not is_generic_product_family_signature(left.family_signature):
                 return True
@@ -548,11 +553,23 @@ class ProductBlockingService:
         return {token for token in tokens if token not in generic}
 
     def _specific_family_conflicts(self, left: ProductBlockCandidate, right: ProductBlockCandidate) -> bool:
+        if self._birth_component_conflicts(left, right):
+            return True
         left_specific = self._specific_family_tokens(left.family_tokens)
         right_specific = self._specific_family_tokens(right.family_tokens)
         if self._token_sets_have_containment(left_specific, right_specific):
             return False
         return bool(left_specific and right_specific and not left_specific.intersection(right_specific))
+
+    @staticmethod
+    def _has_birth_benefit_component(candidate: ProductBlockCandidate) -> bool:
+        return bool(candidate.family_tokens.intersection(BIRTH_BENEFIT_FAMILY_TOKENS))
+
+    def _birth_benefit_component_match(self, left: ProductBlockCandidate, right: ProductBlockCandidate) -> bool:
+        return self._has_birth_benefit_component(left) and self._has_birth_benefit_component(right)
+
+    def _birth_component_conflicts(self, left: ProductBlockCandidate, right: ProductBlockCandidate) -> bool:
+        return self._has_birth_benefit_component(left) != self._has_birth_benefit_component(right)
 
     @staticmethod
     def _token_sets_have_containment(left_tokens: set[str], right_tokens: set[str]) -> bool:

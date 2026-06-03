@@ -161,6 +161,8 @@ class ProductDuplicateGuardService:
 
         for index, left in enumerate(candidates):
             for right in candidates[index + 1 :]:
+                if self._versionless_ambiguous_pair(left, right, candidates):
+                    continue
                 if self._duplicate_pair_score(left, right) >= 0.65:
                     union(left.product_id, right.product_id)
 
@@ -180,8 +182,12 @@ class ProductDuplicateGuardService:
             return 0.0
         if left.version_signature and right.version_signature and left.version_signature != right.version_signature:
             return 0.0
+        if self.blocking_service._birth_component_conflicts(left, right):
+            return 0.0
         if self._distinct_variant_modifier(left.name, right.name):
             return 0.0
+        if self.blocking_service._birth_benefit_component_match(left, right):
+            return 0.91
         if left.family_signature and right.family_signature and left.family_signature == right.family_signature:
             if self._usable_duplicate_signature(left.family_signature):
                 return 0.96
@@ -222,6 +228,38 @@ class ProductDuplicateGuardService:
         if context_score >= 0.70 and name_score >= 0.55 and len(shared_specific) >= 2 and (same_company or same_partner):
             return min(0.88, max(context_score, name_score))
         return 0.0
+
+    def _versionless_ambiguous_pair(
+        self,
+        left: ProductBlockCandidate,
+        right: ProductBlockCandidate,
+        candidates: list[ProductBlockCandidate],
+    ) -> bool:
+        left_versions = set(left.version_signature)
+        right_versions = set(right.version_signature)
+        if left_versions and right_versions:
+            return False
+        versionless = left if not left_versions else right if not right_versions else None
+        versioned = right if versionless is left else left if versionless is right else None
+        if versionless is None or versioned is None or not versioned.version_signature:
+            return False
+        base_signature = self._signature_base(versioned.family_signature)
+        if not base_signature:
+            return False
+        competing_versions: set[str] = set()
+        for candidate in candidates:
+            if candidate.product_id == versioned.product_id:
+                continue
+            if candidate.company_id != versioned.company_id:
+                continue
+            if self._signature_base(candidate.family_signature) != base_signature:
+                continue
+            competing_versions.update(candidate.version_signature)
+        return bool(competing_versions - versioned.version_signature)
+
+    @staticmethod
+    def _signature_base(signature: str | None) -> str:
+        return (signature or "").split("|v:", 1)[0]
 
     def _distinct_variant_modifier(self, left_name: str | None, right_name: str | None) -> bool:
         left = self.blocking_service._compact(left_name)

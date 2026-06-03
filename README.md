@@ -325,6 +325,22 @@ GET /api/admin/llm-execution-guard-summary
 
 The response includes low/skip LLM violations, article-level same-product LLM violations, full-body prompt violations, cache hit rate, task-type run counts, and whether snippet/cluster/risky-verify/consolidation flags are enabled. The dashboard admin panel also shows this summary.
 
+## 상품 버전/출산지원/모바일 보장 GOAL 체크
+
+시그니처 여성건강보험처럼 `3.0`/`4.0` 버전이 있는 상품은 버전을 보존해 별도 canonical로 유지한다. 버전 없는 약칭은 두 버전을 연결하는 자동 병합 근거로 쓰지 않는다. 반대로 `출산하면 보험료 지원`, `출산지원금`, `출산 혜택`처럼 같은 회사·같은 출시창의 출산/임신 지원 컴포넌트는 하나의 특약/보장 family로 묶되, 본상품에는 병합하지 않는다.
+
+상품 출시월이 명시되지 않은 경우에는 관련기사 중 가장 이른 월을 무조건 쓰지 않고, 상품명/버전과 직접 연결된 출시 기사 또는 신상품 기사월을 우선한다. 판매실적, 배타적사용권, 보장금 지급 등 후속 기사월은 직접 출시 기사보다 뒤로 밀린다.
+
+상품 상세의 주요보장 리스트는 API 응답 단계에서 보장명, 보장영역, 급부유형, 금액, 지급조건 기준으로 dedupe한다. PC 표와 모바일 아코디언 모두 같은 dedupe 함수를 사용한다.
+
+회귀 확인:
+
+```powershell
+python scripts/run_product_version_birth_mobile_goal_check.py
+```
+
+결과는 `docs/product-version-birth-mobile-goal-result.md`에 저장되며, 이 스크립트는 크롤링/재파싱/LLM 호출을 하지 않는다.
+
 ## 상품통합 보정 운영
 
 상품통합은 특정 상품명을 하드코딩하지 않고, 상품명과 기사 맥락을 함께 보는 context blocking으로 처리한다. 회사가 미확정이거나 제휴사 필드가 비어 있어도 출시월이 가깝고, 상품군이 호환되며, 상품명/기사 제목/요약/observation 문맥의 핵심 토큰이 겹치면 같은 block 후보로 묶는다. 단, 실제 자동 병합은 더 보수적으로 수행하며 known company가 서로 다르거나 상품군/버전이 명확히 충돌하면 자동 병합하지 않는다.

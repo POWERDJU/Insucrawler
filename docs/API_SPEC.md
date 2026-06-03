@@ -88,6 +88,8 @@ filters: `q`, `company_name`, `insurance_type`, `product_type_code`, `release_ye
 
 Product detail response includes `release_year_month_basis`, `release_year_month_source_article_id`, `release_year_month_source_type`, `release_year_month_inferred_at`. When the basis is `earliest_related_article_month`, the release month was inferred from the earliest related article month.
 
+`major_coverages` is deduplicated before response by normalized coverage name, risk area, benefit type, amount, and condition. The dashboard applies the same defensive dedupe for both PC table and mobile coverage cards.
+
 `product_aliases` items include `raw_product_name`, `normalized_product_name_candidate`, `product_core_key`, `article_id`, `source_type`, `first_seen_at`, `last_seen_at`, and `observation_count`.
 
 ## Companies

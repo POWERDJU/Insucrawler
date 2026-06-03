@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -162,7 +163,7 @@ class ProductService:
             "product_type_assignments": [dict(row) for row in type_rows],
             "structured_features": [self._model_dict(row) for row in features],
             "narrative_insights": [self._model_dict(row) for row in narratives],
-            "major_coverages": [self._model_dict(row) for row in coverages],
+            "major_coverages": self._dedupe_coverages([self._model_dict(row) for row in coverages]),
             "sales_metrics": [self._model_dict(row) for row in sales],
             "articles": [dict(row) for row in articles],
             "product_aliases": [self._model_dict(row) for row in aliases],
@@ -175,6 +176,54 @@ class ProductService:
     @staticmethod
     def _model_dict(row) -> dict:
         return {column.name: getattr(row, column.name) for column in row.__table__.columns}
+
+    @classmethod
+    def _dedupe_coverages(cls, coverages: list[dict]) -> list[dict]:
+        best_by_key: dict[str, dict] = {}
+        order_by_key: dict[str, int] = {}
+        for index, coverage in enumerate(coverages):
+            key = cls._coverage_identity_key(coverage)
+            if key not in best_by_key:
+                best_by_key[key] = coverage
+                order_by_key[key] = index
+                continue
+            if cls._coverage_selection_score(coverage) > cls._coverage_selection_score(best_by_key[key]):
+                best_by_key[key] = coverage
+        return [best_by_key[key] for key, _ in sorted(order_by_key.items(), key=lambda item: item[1])]
+
+    @classmethod
+    def _coverage_identity_key(cls, coverage: dict) -> str:
+        name = cls._compact_coverage_text(
+            coverage.get("coverage_name_normalized") or coverage.get("coverage_name_raw") or coverage.get("coverage_summary")
+        )
+        condition = cls._compact_coverage_text(coverage.get("condition_text") or coverage.get("limit_text"))
+        return "|".join(
+            [
+                name,
+                cls._compact_coverage_text(coverage.get("risk_area")),
+                cls._compact_coverage_text(coverage.get("benefit_type")),
+                str(coverage.get("max_amount_krw") or ""),
+                condition,
+            ]
+        )
+
+    @staticmethod
+    def _coverage_selection_score(coverage: dict) -> tuple:
+        return (
+            1 if coverage.get("coverage_summary") else 0,
+            len(str(coverage.get("coverage_summary") or "")),
+            1 if coverage.get("max_amount_krw") else 0,
+            1 if coverage.get("condition_text") else 0,
+            float(coverage.get("confidence") or 0.0),
+            -int(coverage.get("display_order") or 0),
+            -int(coverage.get("coverage_id") or 0),
+        )
+
+    @staticmethod
+    def _compact_coverage_text(value) -> str:
+        if value is None:
+            return ""
+        return re.sub(r"[\W_]+", "", str(value).casefold())
 
     @staticmethod
     def _correction_dict(row) -> dict:

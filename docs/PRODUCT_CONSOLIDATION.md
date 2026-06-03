@@ -112,6 +112,11 @@ tokens, aliases, or article context make the candidate meaningful. Different
 known companies are never auto-merged, and conflicting version signatures such
 as `3.0` versus `4.0` are blocked from deterministic merge.
 
+Versionless names are guarded too. When one same-company product family contains
+multiple explicit versions, a versionless alias such as `시그니처 여성건강보험`
+must not bridge `3.0` and `4.0`; it remains a separate review/alias candidate
+unless deterministic evidence can attach it to exactly one version.
+
 `version_signature` is also calculated only from product-name fields. It accepts
 explicit product-version markers such as `4.0`, `3.0`, `V2`, and `2세대`. It
 does not treat article dates, ranking numbers, periods, or money amounts such as
@@ -123,6 +128,12 @@ high-information family tokens match, middle modifiers such as `건강`, `종합
 and `보험` may be ignored for identity comparison. This lets
 `시그니처 여성 건강보험 4.0` and `시그니처 여성보험 4.0` merge into one canonical
 product, while `3.0` and `4.0` remain separate.
+
+Birth/pregnancy benefit components use their own family token. Variants such as
+`출산하면 보험료 지원 특약`, `출산지원금 보장 특약`, and `출산 혜택 보험료 유예
+특약` can merge together when company and release window are compatible. The
+same token is also a conflict guard, so those component rows do not merge into a
+body product such as `시그니처 여성건강보험 4.0`.
 
 Canonical selection prefers official or launch-like product names with more
 specific family tokens and brand tokens. Descriptive fragments such as
@@ -216,6 +227,16 @@ with candidate ids, names, product types, inferred partner candidates, release
 month windows, and context similarity samples. LLM gray-block judgement remains
 off by default; enable it only after reviewing deterministic blocks and with a
 strict cost/call budget.
+
+Run the version/birth/mobile regression gate after changing consolidation or
+product-detail rendering:
+
+```bash
+python scripts/run_product_version_birth_mobile_goal_check.py
+```
+
+It does not crawl, reparse, or call Gemini/Qwen. The report is written to
+`docs/product-version-birth-mobile-goal-result.md`.
 
 To include family-signature diagnostics in the dry-run CSV:
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from decimal import Decimal
 from typing import Any
 
@@ -37,6 +38,7 @@ from app.normalizers.product_name_normalizer import (
     product_core_key_candidates,
     product_search_key,
     validate_product_name_before_save,
+    version_signature,
 )
 from app.utils.dates import current_year_month
 from app.utils.dates import utcnow
@@ -45,6 +47,30 @@ from app.services.company_attribution_service import CompanyAttributionService
 
 PROTECTED_RELEASE_BASES = {"explicit_in_article", "manual", "external_grounded_source"}
 INFERABLE_RELEASE_BASES = {None, "", "unknown", "first_seen_only", "earliest_related_article_month"}
+LAUNCH_DIRECT_KEYWORDS = (
+    "출시",
+    "신상품",
+    "신규 출시",
+    "개정 출시",
+    "새롭게 출시",
+    "선보",
+    "내놨",
+    "판매 개시",
+    "판매한다",
+)
+FOLLOWUP_RELEASE_EXCLUSION_KEYWORDS = (
+    "판매실적",
+    "보험금 지급",
+    "지급 건수",
+    "이익 방어",
+    "배타적사용권",
+    "보장금 지급",
+    "청구 건수",
+    "출시 이후",
+    "출시 당시",
+    "캠페인",
+    "이벤트",
+)
 
 
 def get_or_create_company(db: Session, raw_name: str | None, insurance_type: str | None = None) -> DimCompany | None:
@@ -614,17 +640,21 @@ def update_release_month_if_unknown(db: Session, product_id: int) -> bool:
         return False
     if product.release_year_month and product.release_year_month_basis not in INFERABLE_RELEASE_BASES:
         return False
-    article = (
+    articles = (
         db.query(FactArticle)
         .join(FactProductArticle, FactProductArticle.article_id == FactArticle.article_id)
         .filter(FactProductArticle.product_id == product_id, FactArticle.pub_date.isnot(None))
         .order_by(FactArticle.pub_date.asc(), FactArticle.article_id.asc())
-        .first()
+        .all()
     )
+    article = _select_release_month_article(db, product, articles)
     if not article or not article.pub_date:
         return False
     inferred_month = article.pub_date.strftime("%Y-%m")
-    if product.release_year_month_basis == "earliest_related_article_month" and product.release_year_month and product.release_year_month <= inferred_month:
+    if (
+        product.release_year_month == inferred_month
+        and product.release_year_month_source_article_id == article.article_id
+    ):
         return False
     if product.release_year_month and product.release_year_month_basis not in INFERABLE_RELEASE_BASES:
         return False
@@ -635,6 +665,79 @@ def update_release_month_if_unknown(db: Session, product_id: int) -> bool:
     product.release_year_month_inferred_at = utcnow()
     db.flush()
     return True
+
+
+def _select_release_month_article(db: Session, product: DimProduct, articles: list[FactArticle]) -> FactArticle | None:
+    if not articles:
+        return None
+    aliases = [
+        alias.raw_product_name
+        for alias in db.query(DimProductAlias).filter(DimProductAlias.product_id == product.product_id).all()
+        if alias.raw_product_name
+    ]
+    ranked: list[tuple[int, Any, int, FactArticle]] = []
+    for article in articles:
+        rank = _release_article_rank(article, product, aliases)
+        if rank is None:
+            continue
+        ranked.append((rank, article.pub_date, int(article.article_id or 0), article))
+    if ranked:
+        return sorted(ranked, key=lambda item: (item[0], item[1], item[2]))[0][3]
+    return sorted(articles, key=lambda item: (item.pub_date, int(item.article_id or 0)))[0]
+
+
+def _release_article_rank(article: FactArticle, product: DimProduct, aliases: list[str]) -> int | None:
+    text_value = " ".join(filter(None, [article.title, article.description]))
+    if not _article_version_compatible(text_value, product, aliases):
+        return None
+    mentions_product = _article_mentions_product(text_value, product, aliases)
+    has_launch = any(keyword in text_value for keyword in LAUNCH_DIRECT_KEYWORDS)
+    is_followup = any(keyword in text_value for keyword in FOLLOWUP_RELEASE_EXCLUSION_KEYWORDS)
+    if mentions_product and has_launch and not is_followup:
+        return 0
+    if mentions_product and not is_followup:
+        return 1
+    if has_launch and not is_followup:
+        return 2
+    if mentions_product:
+        return 3
+    return 4
+
+
+def _article_version_compatible(text_value: str, product: DimProduct, aliases: list[str]) -> bool:
+    product_versions = set()
+    for value in [
+        product.normalized_product_name,
+        product.raw_product_name,
+        product.product_core_key,
+        product.product_identity_key,
+        *aliases,
+    ]:
+        product_versions.update(version_signature(value))
+    if not product_versions:
+        return True
+    article_versions = version_signature(text_value)
+    return not article_versions or bool(product_versions.intersection(article_versions))
+
+
+def _article_mentions_product(text_value: str, product: DimProduct, aliases: list[str]) -> bool:
+    article_key = _compact_product_text(text_value)
+    if not article_key:
+        return False
+    candidates = [product.normalized_product_name, product.raw_product_name, product.product_core_key, *aliases]
+    for candidate in candidates:
+        candidate_key = _compact_product_text(candidate)
+        if len(candidate_key) >= 5 and (candidate_key in article_key or article_key in candidate_key):
+            return True
+        tokens = [token for token in re.findall(r"[0-9A-Za-z가-힣.]+", candidate or "") if len(_compact_product_text(token)) >= 3]
+        informative = [token for token in tokens if token not in {"보험", "상품", "건강보험", "신상품", "무배당"}]
+        if informative and sum(1 for token in informative if _compact_product_text(token) in article_key) >= min(2, len(informative)):
+            return True
+    return False
+
+
+def _compact_product_text(value: str | None) -> str:
+    return re.sub(r"[^0-9A-Za-z가-힣.]+", "", (value or "").casefold())
 
 
 def backfill_unknown_release_months(db: Session) -> int:

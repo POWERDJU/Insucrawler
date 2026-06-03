@@ -886,7 +886,7 @@ function detailHtml(product) {
   const primary = assignments.find((item) => item.assignment_role === "primary") || assignments.find((item) => item.product_type_code === product.primary_product_type_code) || {};
   const feature = (product.structured_features || [])[0] || {};
   const insight = (product.narrative_insights || [])[0] || {};
-  const coverages = product.major_coverages || [];
+  const coverages = dedupeCoverages(product.major_coverages || []);
   const sales = product.sales_metrics || [];
   const articles = product.articles || [];
   return `
@@ -971,6 +971,50 @@ function miniTable(rows, columns, linkUrls = false) {
           .join("")}</tr>`,
     )
     .join("")}</tbody></table></div>`;
+}
+
+function dedupeCoverages(coverages) {
+  const bestByKey = new Map();
+  const order = [];
+  for (const coverage of coverages || []) {
+    const key = coverageIdentityKey(coverage);
+    if (!bestByKey.has(key)) {
+      bestByKey.set(key, coverage);
+      order.push(key);
+      continue;
+    }
+    if (coverageSelectionScore(coverage) > coverageSelectionScore(bestByKey.get(key))) {
+      bestByKey.set(key, coverage);
+    }
+  }
+  return order.map((key) => bestByKey.get(key));
+}
+
+function coverageIdentityKey(coverage) {
+  return [
+    compactCoverageText(coverage.coverage_name_normalized || coverage.coverage_name_raw || coverage.coverage_summary),
+    compactCoverageText(coverage.risk_area),
+    compactCoverageText(coverage.benefit_type),
+    coverage.max_amount_krw || "",
+    compactCoverageText(coverage.condition_text || coverage.limit_text),
+  ].join("|");
+}
+
+function coverageSelectionScore(coverage) {
+  const summary = coverage.coverage_summary || "";
+  return [
+    summary ? 1 : 0,
+    String(summary).length,
+    coverage.max_amount_krw ? 1 : 0,
+    coverage.condition_text ? 1 : 0,
+    Number(coverage.confidence || 0),
+    -Number(coverage.display_order || 0),
+    -Number(coverage.coverage_id || 0),
+  ].reduce((score, value) => score * 1000 + value, 0);
+}
+
+function compactCoverageText(value) {
+  return value == null ? "" : String(value).toLowerCase().replace(/[\W_]+/g, "");
 }
 
 function aliasList(aliases) {
@@ -1436,6 +1480,7 @@ function mobileDefinitionList(items) {
 }
 
 function renderMobileCoverageCards(coverages) {
+  coverages = dedupeCoverages(coverages || []);
   if (!coverages.length) return '<div class="mobile-empty-card">주요보장 데이터가 없습니다.</div>';
   return `<div class="mobile-coverage-list">${coverages.map((coverage, index) => `
     <details class="mobile-coverage-card" ${index < 3 ? "open" : ""}>
