@@ -90,7 +90,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   initExclusiveRightListFilters();
   syncDesktopExclusiveFiltersToMobile();
   await loadExclusiveRightList();
-  await refreshDataStatus();
   await refreshDemoStatus();
   await runQuery();
 });
@@ -217,19 +216,6 @@ async function refreshDemoStatus() {
   const status = await getJson("/api/dashboard/demo-status");
   const notice = document.getElementById("demoNotice");
   notice.hidden = Boolean(status.has_products);
-}
-
-async function refreshDataStatus() {
-  try {
-    const status = await getJson("/api/dashboard/data-status");
-    document.getElementById("statusProductCount").textContent = number(status.product_count);
-    document.getElementById("statusArticleCount").textContent = number(status.article_count);
-    document.getElementById("statusPendingExtraction").textContent = number(status.pending_extraction_count);
-    document.getElementById("statusLastSuccess").textContent = status.last_successful_job_name || "-";
-    document.getElementById("statusLastFailed").textContent = status.last_failed_job_name || "-";
-  } catch (error) {
-    document.getElementById("statusProductCount").textContent = "-";
-  }
 }
 
 async function loadMonthlyNewProducts() {
@@ -1642,7 +1628,6 @@ async function startCrawlJob(url, body) {
     const result = await adminPostJson(url, body);
     message.textContent = `작업 생성 완료: #${result.crawl_job_id}`;
     await refreshCrawlJobs();
-    await refreshDataStatus();
   } catch (error) {
     message.textContent = error.message;
   }
@@ -1658,7 +1643,6 @@ async function refreshCrawlJobs() {
     await refreshLlmBatchJobs();
     await refreshLlmGuardSummary();
     await refreshProductConsolidation();
-    await refreshDataStatus();
   } catch (error) {
     document.getElementById("adminJobMessage").textContent = error.message;
     if (error.message.includes("401")) {
@@ -1718,7 +1702,6 @@ async function runProductConsolidation() {
     const result = await adminPostJson("/api/admin/product-consolidation/run", payload);
     message.textContent = `상품통합 완료: #${result.consolidation_job_id}, 자동병합 ${result.auto_merge_count || 0}건`;
     await refreshProductConsolidation(result.consolidation_job_id);
-    await refreshDataStatus();
   } catch (error) {
     message.textContent = error.message;
   }

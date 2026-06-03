@@ -427,21 +427,6 @@ input[type="month"] {
   background: var(--warn-bg);
 }
 
-.status-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  background: #ffffff;
-  color: var(--muted);
-}
-
-.status-strip strong {
-  color: var(--text);
-}
-
 .admin-panel {
   margin-top: 16px;
 }
@@ -1151,7 +1136,6 @@ textarea:focus,
 .option-empty,
 .filter-empty-state,
 .checkbox-empty,
-.status-strip,
 #exclusiveRightListMessage {
   border-color: var(--line-gray);
   background: var(--bg-card);
@@ -1196,16 +1180,6 @@ textarea:focus,
 
 .checkbox-list label:hover {
   background: #242424;
-}
-
-.status-strip {
-  border: 1px solid var(--line-gray);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-}
-
-.status-strip strong {
-  color: #ffffff;
 }
 
 .table-wrap {
