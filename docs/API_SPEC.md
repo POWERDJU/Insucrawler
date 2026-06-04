@@ -921,3 +921,8 @@ Response:
 `mode=dry_run` writes a CSV plan and does not mutate the DB. `mode=apply`
 applies only validator-approved merge groups. The endpoint is disabled unless
 `PRODUCT_LLM_CONSOLIDATION_ENABLED=true`.
+
+
+### Dashboard filter semantics
+
+Dashboard filter arrays use an empty list to mean "no filter" for that dimension. `release_years=[]` means all release years, `company_names=[]` means all companies in the selected insurance type or all companies when insurance type is all, and `product_type_codes=[]` means all product type groups. When `product_type_codes` is not empty, the product type filter is always applied independently of insurance type and company selection. With `classification_mode="include_secondary"`, both `primary_product_type_code` and secondary `fact_product_type_assignment` rows are searched. `/api/dashboard/query` and `/api/dashboard/export` use the same product selection logic.

@@ -700,7 +700,19 @@ function selectedFilterValues(id) {
   if (!inputs.length) return [];
   const values = inputs.filter((input) => input.checked).map((input) => input.value);
   if (values.length === inputs.length) return [];
-  return values.length ? values : [NO_SELECTION];
+  return values;
+}
+
+function optionLabelsForValues(options, values, valueKey = "value", labelKey = "label") {
+  if (!values.length) return [];
+  const labelMap = new Map((options || []).map((item) => [item[valueKey], item[labelKey] || item[valueKey]]));
+  return values.map((value) => labelMap.get(value) || value);
+}
+
+function compactFilterLabel(labels, fallback) {
+  if (!labels.length) return fallback;
+  if (labels.length <= 2) return labels.join(", ");
+  return `${labels.slice(0, 2).join(", ")} 외 ${labels.length - 2}`;
 }
 
 function optionFlags() {
@@ -715,13 +727,14 @@ function currentQuery() {
   const selectedInsuranceType = document.getElementById("insuranceType").value;
   const keyword = document.getElementById("keywordInput")?.value.trim() || null;
   const flags = optionFlags();
+  const productTypeCodes = selectedFilterValues("productTypeCodes");
   return {
     release_year: years.length === 1 ? years[0] : "전체",
     release_years: years,
     release_month: "전체",
     insurance_type: selectedInsuranceType || "전체",
     company_names: selectedInsuranceType ? selectedFilterValues("companyNames") : [],
-    product_type_codes: selectedFilterValues("productTypeCodes"),
+    product_type_codes: productTypeCodes,
     classification_mode: "include_secondary",
     pivot_preset: "custom",
     custom_rows: ["company_name", "product_type_name"],
@@ -1330,10 +1343,11 @@ function updateMobileFilterSummary() {
   const insuranceType = getMobileInsuranceType();
   const companies = selectedFilterValues("mobileCompanyNames");
   const productTypes = selectedFilterValues("mobileProductTypeCodes");
+  const productTypeLabels = optionLabelsForValues(state.options?.product_types, productTypes, "code", "name");
   const keyword = document.getElementById("mobileKeywordInput")?.value.trim();
   chips.push(years.length ? `${years.length}개 년도` : "년도 전체");
   chips.push(insuranceType || "업종 전체");
-  chips.push(productTypes.length ? `상품군 ${productTypes.length}개` : "상품군 전체");
+  chips.push(compactFilterLabel(productTypeLabels, "상품군 전체"));
   if (keyword) chips.push(`검색: ${keyword}`);
   summary.textContent = chips.join(" · ");
   document.getElementById("mobileYearCount").textContent = years.length ? `${years.length}개` : "전체";

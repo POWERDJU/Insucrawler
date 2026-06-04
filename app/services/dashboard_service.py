@@ -196,10 +196,12 @@ class DashboardService:
         filters: dict[str, list[Any]] = {}
         if request.get("insurance_type") and request["insurance_type"] != "전체":
             filters["insurance_type"] = [request["insurance_type"]]
-        if request.get("company_names"):
-            filters["company_name"] = request["company_names"]
-        if request.get("product_type_codes"):
-            filters["product_type_code"] = request["product_type_codes"]
+        company_names = self._clean_filter_values(request.get("company_names"))
+        product_type_codes = self._clean_filter_values(request.get("product_type_codes"))
+        if company_names:
+            filters["company_name"] = company_names
+        if product_type_codes:
+            filters["product_type_code"] = product_type_codes
         company_include_roles: list[str] = []
         if request.get("include_reinsurers"):
             company_include_roles.extend(sorted(REINSURER_ROLES))
@@ -317,8 +319,9 @@ class DashboardService:
         include_sql, include_params = self._company_inclusion_sql(request)
         sql += include_sql
         params.update(include_params)
-        if request.get("company_names"):
-            names = request["company_names"]
+        company_names = self._clean_filter_values(request.get("company_names"))
+        if company_names:
+            names = company_names
             placeholders = []
             for idx, value in enumerate(names):
                 key = f"company_{idx}"
@@ -333,7 +336,7 @@ class DashboardService:
                 placeholders.append(f":{key}")
                 params[key] = value
             sql += f" AND s.release_year_month IN ({','.join(placeholders)})"
-        product_type_codes = request.get("product_type_codes") or []
+        product_type_codes = self._clean_filter_values(request.get("product_type_codes"))
         if product_type_codes:
             placeholders = []
             for idx, value in enumerate(product_type_codes):
@@ -342,9 +345,12 @@ class DashboardService:
                 params[key] = value
             if (request.get("classification_mode") or "include_secondary") == "include_secondary":
                 sql += f"""
-                    AND EXISTS (
-                        SELECT 1 FROM fact_product_type_assignment a
-                        WHERE a.product_id = s.product_id AND a.product_type_code IN ({','.join(placeholders)})
+                    AND (
+                        s.primary_product_type_code IN ({','.join(placeholders)})
+                        OR EXISTS (
+                            SELECT 1 FROM fact_product_type_assignment a
+                            WHERE a.product_id = s.product_id AND a.product_type_code IN ({','.join(placeholders)})
+                        )
                     )
                 """
             else:
@@ -475,6 +481,14 @@ class DashboardService:
     @staticmethod
     def _sql_compact(expr: str) -> str:
         return f"REPLACE(REPLACE(REPLACE(LOWER(COALESCE({expr}, '')), ' ', ''), '-', ''), '/', '')"
+
+    @staticmethod
+    def _clean_filter_values(values: Any) -> list[Any]:
+        if not values:
+            return []
+        if not isinstance(values, (list, tuple, set)):
+            values = [values]
+        return [value for value in values if value not in {None, "", "__NO_SELECTION__"}]
 
     def _comparison_rows(self, db: Session, products: list[dict[str, Any]]) -> list[dict[str, Any]]:
         product_ids = [item["product_id"] for item in products]

@@ -1070,6 +1070,66 @@ button.secondary:hover,
   background: var(--bg-card);
 }
 
+.top-newsboards .monthly-board {
+  display: flex;
+  flex-direction: column;
+  min-height: 316px;
+  max-height: 316px;
+  overflow: hidden;
+}
+
+.top-newsboards .monthly-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 46px;
+}
+
+.top-newsboards .monthly-card h3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.top-newsboards .monthly-card p {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: calc(1.55em * 4);
+}
+
+.top-newsboards .monthly-card-footer {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
+  flex: 0 0 auto;
+  margin-top: 0;
+  min-height: 20px;
+  align-items: flex-end;
+}
+
+.top-newsboards .monthly-card-footer span:first-child {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+  padding-right: 12px;
+}
+
+.top-newsboards .monthly-card-footer span:last-child {
+  flex: 0 0 auto;
+  min-width: 52px;
+  text-align: right;
+}
+
 .toolbar {
   padding: 20px;
 }
@@ -1419,8 +1479,17 @@ a:hover {
   .mobile-exclusive-card p {
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 4;
     overflow: hidden;
+  }
+
+  .top-newsboards .monthly-board {
+    min-height: 292px;
+    max-height: 292px;
+  }
+
+  .top-newsboards .monthly-card p {
+    max-height: calc(1.55em * 4);
   }
 
   /* Mobile filter sheet */

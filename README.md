@@ -533,3 +533,10 @@ python scripts/run_company_attribution_goal_check.py
 ```
 
 Details are in `docs/company-attribution-diagnosis.md`; the latest run report is written to `docs/company-attribution-goal-result.md`.
+
+
+### Dashboard board height and filter semantics
+
+The top `monthly new products` and `recent exclusive-use-rights` boards keep a fixed card height so carousel transitions do not shift the layout. Names are clamped to two lines, summaries to four lines, and article titles to one line.
+
+Dashboard filter arrays use an empty list to mean "no filter" for that dimension. `release_years=[]` means all release years, `company_names=[]` means all companies in the selected insurance type or all companies when insurance type is all, and `product_type_codes=[]` means all product type groups. When `product_type_codes` contains any value, the product type filter is applied even if insurance type is all and no company is selected. Query and Excel export use the same filter logic.

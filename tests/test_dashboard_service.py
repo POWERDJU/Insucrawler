@@ -1,10 +1,17 @@
+from app.db.models import DimProduct, FactProductTypeAssignment
 from app.schemas.dashboard import DashboardQueryRequest
 from app.services.dashboard_service import DashboardService
 from app.services.ingestion_service import IngestionService
 from openpyxl import load_workbook
 
 
-def seed_dashboard_product(db, release_year_month="2026-05", name="대시보드 간편 암보험"):
+def seed_dashboard_product(
+    db,
+    release_year_month="2026-05",
+    name="대시보드 간편 암보험",
+    product_type_code="CANCER",
+    secondary_product_type_code="SIMPLIFIED_IMPAIRED",
+):
     IngestionService().upsert_structured_product(
         db,
         {
@@ -14,13 +21,13 @@ def seed_dashboard_product(db, release_year_month="2026-05", name="대시보드 
                 "company_name": "삼성생명",
                 "insurance_type": "생명보험",
                 "release_year_month": release_year_month,
-                "primary_product_type_code": "CANCER",
+                "primary_product_type_code": product_type_code,
                 "confidence_total": 0.9,
                 "needs_review": False,
             },
             "product_type_assignments": [
-                {"product_type_code": "CANCER", "assignment_role": "primary", "confidence": 0.95},
-                {"product_type_code": "SIMPLIFIED_IMPAIRED", "assignment_role": "secondary", "confidence": 0.9},
+                {"product_type_code": product_type_code, "assignment_role": "primary", "confidence": 0.95},
+                {"product_type_code": secondary_product_type_code, "assignment_role": "secondary", "confidence": 0.9},
             ],
             "major_coverages": [
                 {"coverage_name_raw": "암진단비", "risk_area": "암", "benefit_type": "진단", "detail_level": "exact_coverage", "evidence_text": "암진단비 최대 1억원", "max_amount_krw": 100000000, "confidence": 0.9}
@@ -192,6 +199,43 @@ def test_dashboard_empty_company_and_product_type_filters_mean_all(db_session):
     assert result["products"][0]["normalized_product_name"] == "대시보드 간편 암보험"
 
 
+def test_dashboard_product_type_filter_applies_without_industry_or_company(db_session):
+    seed_dashboard_product(db_session, name="암보험 상품", product_type_code="CANCER")
+    seed_dashboard_product(db_session, name="연금저축 상품", product_type_code="ANNUITY_SAVINGS")
+
+    result = DashboardService().query(
+        db_session,
+        dashboard_request(
+            insurance_type="전체",
+            company_names=[],
+            product_type_codes=["ANNUITY_SAVINGS"],
+        ),
+    )
+
+    assert result["summary"]["product_count"] == 1
+    assert [item["normalized_product_name"] for item in result["products"]] == ["연금저축 상품"]
+
+
+def test_dashboard_product_type_filter_includes_primary_even_without_assignment(db_session):
+    seed_dashboard_product(db_session, name="배정 누락 암보험", product_type_code="CANCER")
+    product = db_session.query(DimProduct).filter(DimProduct.normalized_product_name == "배정 누락 암보험").one()
+    db_session.query(FactProductTypeAssignment).filter(FactProductTypeAssignment.product_id == product.product_id).delete()
+    db_session.commit()
+
+    result = DashboardService().query(
+        db_session,
+        dashboard_request(
+            insurance_type="전체",
+            company_names=[],
+            product_type_codes=["CANCER"],
+            classification_mode="include_secondary",
+        ),
+    )
+
+    assert result["summary"]["product_count"] == 1
+    assert result["products"][0]["normalized_product_name"] == "배정 누락 암보험"
+
+
 def test_dashboard_product_list_excludes_special_clause_products(db_session):
     seed_dashboard_product(db_session)
     seed_special_clause_product(db_session)
@@ -247,6 +291,28 @@ def test_dashboard_export_comparison_workbook(db_session):
     assert row["상품특징 요약"] == "간편고지형 암보험"
     assert row["주요보장1 보장명"] == "암진단비"
     assert row["판매실적1 항목"] == "판매건수"
+
+
+def test_dashboard_export_uses_same_product_type_filter_without_company(db_session):
+    seed_dashboard_product(db_session, name="암보험 엑셀 제외", product_type_code="CANCER")
+    seed_dashboard_product(db_session, name="연금저축 엑셀 포함", product_type_code="ANNUITY_SAVINGS")
+
+    workbook_file = DashboardService().export_comparison_workbook(
+        db_session,
+        dashboard_request(
+            insurance_type="전체",
+            company_names=[],
+            product_type_codes=["ANNUITY_SAVINGS"],
+        ),
+    )
+    workbook = load_workbook(workbook_file)
+    sheet = workbook["상품 비교표"]
+    headers = [cell.value for cell in sheet[1]]
+    rows = [[cell.value for cell in row] for row in sheet.iter_rows(min_row=2)]
+
+    assert len(rows) == 1
+    row = dict(zip(headers, rows[0]))
+    assert row["상품명"] == "연금저축 엑셀 포함"
 
 
 def test_dashboard_hides_release_month_outside_visible_period_in_screen_and_excel(db_session):
