@@ -1395,14 +1395,25 @@ a:hover {
   }
 
   .app-header {
-    display: grid;
-    gap: 12px;
-    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    min-height: auto;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .brand-title-wrap {
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
   }
 
   .app-header h1 {
-    font-size: 24px;
-    line-height: 1.25;
+    max-width: 100%;
+    font-size: 22px;
+    line-height: 1.22;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
   }
 
   .header-actions {
@@ -1466,12 +1477,102 @@ a:hover {
     padding: 16px;
   }
 
+  .monthly-board-header {
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .monthly-board .eyebrow {
+    margin-bottom: 2px;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .monthly-board h2 {
+    font-size: 20px;
+    line-height: 1.28;
+    word-break: keep-all;
+  }
+
+  .monthly-board-controls {
+    flex: 0 0 auto;
+  }
+
+  .monthly-board-controls button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 6px 8px;
+  }
+
+  .top-newsboards .monthly-card,
+  .monthly-card {
+    display: block;
+    padding: 14px 14px 44px;
+  }
+
+  .newsboard-card-with-logo.has-logo {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-areas:
+      "logo meta"
+      "title title"
+      "summary summary";
+    column-gap: 10px;
+    align-content: start;
+    align-items: center;
+    padding-right: 14px;
+  }
+
+  .newsboard-logo-wrap {
+    grid-area: logo;
+    position: static;
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    margin: 0 0 10px;
+    border-radius: 12px;
+    box-shadow: none;
+  }
+
+  .newsboard-company-logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  .monthly-card-meta {
+    grid-area: meta;
+    align-self: start;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .monthly-card-meta span {
+    max-width: 100%;
+    padding: 3px 8px;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
   .monthly-card h3,
   .mobile-product-card h3,
   .mobile-exclusive-card h3,
   .mobile-detail-card h3 {
-    font-size: 20px;
-    line-height: 1.35;
+    font-size: 19px;
+    line-height: 1.34;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  .monthly-card h3 {
+    grid-area: title;
+    margin-top: 4px;
+  }
+
+  .monthly-card p {
+    grid-area: summary;
+    font-size: 14px;
+    line-height: 1.48;
   }
 
   .monthly-card p,
@@ -1484,12 +1585,30 @@ a:hover {
   }
 
   .top-newsboards .monthly-board {
-    min-height: 292px;
-    max-height: 292px;
+    min-height: 348px;
+    max-height: 348px;
   }
 
   .top-newsboards .monthly-card p {
-    max-height: calc(1.55em * 4);
+    max-height: calc(1.48em * 4);
+  }
+
+  .top-newsboards .monthly-card-footer {
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    align-items: flex-end;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .top-newsboards .monthly-card-footer span:first-child {
+    -webkit-line-clamp: 1;
+    padding-right: 8px;
+  }
+
+  .top-newsboards .monthly-card-footer span:last-child {
+    min-width: 44px;
   }
 
   /* Mobile filter sheet */
@@ -1771,15 +1890,17 @@ a:hover {
 
 @media (max-width: 720px) {
   .app-header {
-    padding: 18px;
+    padding: 14px 16px;
   }
 
   .brand-title-wrap {
-    align-items: flex-start;
+    align-items: center;
+    min-width: 0;
   }
 
   .app-header h1 {
-    font-size: 26px;
+    font-size: 22px;
+    line-height: 1.22;
   }
 
   .admin-update-button {
