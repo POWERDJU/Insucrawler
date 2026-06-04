@@ -1508,7 +1508,7 @@ a:hover {
   .top-newsboards .monthly-card,
   .monthly-card {
     display: block;
-    padding: 14px 14px 44px;
+    padding: 14px 14px 66px;
   }
 
   .newsboard-card-with-logo.has-logo {
@@ -1585,12 +1585,13 @@ a:hover {
   }
 
   .top-newsboards .monthly-board {
-    min-height: 348px;
-    max-height: 348px;
+    min-height: 390px;
+    max-height: 390px;
   }
 
   .top-newsboards .monthly-card p {
     max-height: calc(1.48em * 4);
+    margin-bottom: 8px;
   }
 
   .top-newsboards .monthly-card-footer {
