@@ -926,3 +926,11 @@ applies only validator-approved merge groups. The endpoint is disabled unless
 ### Dashboard filter semantics
 
 Dashboard filter arrays use an empty list to mean "no filter" for that dimension. `release_years=[]` means all release years, `company_names=[]` means all companies in the selected insurance type or all companies when insurance type is all, and `product_type_codes=[]` means all product type groups. When `product_type_codes` is not empty, the product type filter is always applied independently of insurance type and company selection. With `classification_mode="include_secondary"`, both `primary_product_type_code` and secondary `fact_product_type_assignment` rows are searched. `/api/dashboard/query` and `/api/dashboard/export` use the same product selection logic.
+
+## Multi-Company Article Default Exclusion
+
+Default product and exclusive-use-right APIs exclude records derived only from articles flagged with `fact_article.multi_company_article_yn=true`.
+
+- `/api/dashboard/query`, `/api/dashboard/export`, product search, and monthly new-product boards keep canonical products with non-multi-company evidence and exclude only multi-company source records from counts, aliases, related articles, coverage, narrative, and sales aggregations.
+- `/api/exclusive-rights`, `/api/exclusive-rights/export`, and `/api/dashboard/recent-exclusive-rights` exclude `event_status in ('merged', 'rejected', 'rejected_multi_company_only')` and require non-multi-company article evidence for linked events.
+- Raw article records are not removed. Admin/debug tooling can inspect flagged source articles separately.

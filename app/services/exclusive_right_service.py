@@ -653,6 +653,14 @@ class ExclusiveRightService:
     ) -> dict[str, Any]:
         result = extraction if isinstance(extraction, ExclusiveRightExtractionResult) else validate_exclusive_right_payload(extraction)
         article = db.get(FactArticle, article_id) if article_id else None
+        if article and bool(article.multi_company_article_yn):
+            return {
+                "status": "excluded_multi_company",
+                "saved_count": 0,
+                "observation_count": 0,
+                "skipped_count": len(result.exclusive_rights),
+                "llm_run_id": llm_run_id,
+            }
         saved_count = 0
         observation_count = 0
         skipped_count = 0
@@ -779,6 +787,7 @@ class ExclusiveRightService:
         if not candidate_ids:
             return []
         query = db.query(FactArticle).filter(FactArticle.article_id.in_(candidate_ids))
+        query = query.filter(FactArticle.multi_company_article_yn == False)  # noqa: E712
         if crawl_job_id is not None:
             query = query.filter(FactArticle.crawl_job_id == crawl_job_id)
         if date_from:
@@ -806,6 +815,7 @@ class ExclusiveRightService:
             FROM fact_article a
             JOIN fact_content_screening s ON s.article_id = a.article_id
             WHERE s.exclusive_right_candidate_yn = 1
+              AND COALESCE(a.multi_company_article_yn, 0) = 0
         """
         params: dict[str, Any] = {}
         if crawl_job_id is not None:
@@ -1027,7 +1037,19 @@ class ExclusiveRightService:
         return sorted(matches, key=position)[0]
 
     def _apply_filters(self, query, **filters: Any):
-        query = query.filter(FactExclusiveUseRight.event_status != "merged")
+        query = query.filter(FactExclusiveUseRight.event_status.notin_(["merged", "rejected", "rejected_multi_company_only"]))
+        query = query.filter(
+            or_(
+                FactExclusiveUseRight.exclusive_right_id.in_(
+                    select(FactExclusiveUseRightArticle.exclusive_right_id)
+                    .join(FactArticle, FactArticle.article_id == FactExclusiveUseRightArticle.article_id)
+                    .where(FactArticle.multi_company_article_yn == False)  # noqa: E712
+                ),
+                ~FactExclusiveUseRight.exclusive_right_id.in_(
+                    select(FactExclusiveUseRightArticle.exclusive_right_id)
+                ),
+            )
+        )
         insurance_type = filters.get("insurance_type")
         if insurance_type not in ALL_INSURANCE_TYPE_VALUES:
             query = query.filter(FactExclusiveUseRight.insurance_type == insurance_type)

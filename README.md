@@ -540,3 +540,27 @@ Details are in `docs/company-attribution-diagnosis.md`; the latest run report is
 The top `monthly new products` and `recent exclusive-use-rights` boards keep a fixed card height so carousel transitions do not shift the layout. Names are clamped to two lines, summaries to four lines, and article titles to one line.
 
 Dashboard filter arrays use an empty list to mean "no filter" for that dimension. `release_years=[]` means all release years, `company_names=[]` means all companies in the selected insurance type or all companies when insurance type is all, and `product_type_codes=[]` means all product type groups. When `product_type_codes` contains any value, the product type filter is applied even if insurance type is all and no company is selected. Query and Excel export use the same filter logic.
+
+## Multi-Company Article Exclusion
+
+Articles that mention two or more known insurer companies are excluded from new product and exclusive-use-right extraction at the article/source level. This is not a canonical entity deletion policy.
+
+- `fact_article.multi_company_article_yn=true` prevents new extract queues, batch input, and import for that article.
+- Existing cleanup affects only records derived from the excluded source article: observations, article links, aliases, coverage, narrative, and sales metrics.
+- Canonical products or exclusive-use-right events remain visible when they have at least one non-multi-company source article.
+- Canonical rows that only have multi-company source evidence are not physically deleted; they are marked as `rejected_multi_company_only` and excluded from default dashboard/export views.
+- Raw article rows are preserved for audit.
+
+Operational scripts:
+
+```powershell
+python scripts/audit_multi_company_articles.py --dry-run
+python scripts/audit_multi_company_articles.py --apply
+python scripts/cleanup_multi_company_product_extractions.py --dry-run
+python scripts/cleanup_multi_company_product_extractions.py --apply
+python scripts/cleanup_multi_company_exclusive_rights.py --dry-run
+python scripts/cleanup_multi_company_exclusive_rights.py --apply
+python scripts/run_multi_company_entity_safe_goal_check.py
+```
+
+Run dry-run and back up the DB before apply. The scripts do not physically delete products, exclusive-use-right events, or raw articles.

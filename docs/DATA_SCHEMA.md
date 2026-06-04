@@ -263,3 +263,19 @@ python scripts/rebuild_exclusive_right_company_attribution.py
 ```
 
 Dry-run CSV columns are `entity_type`, `entity_id`, `old_company`, `new_company`, `old_insurance_type`, `new_insurance_type`, `product_or_subject_name`, `confidence`, `reason`, `article_url`, and `action`.
+
+## Multi-Company Article Source Exclusion
+
+`fact_article` includes deterministic multi-company article fields:
+
+- `multi_company_article_yn`: true when two or more known insurer companies are detected in one article.
+- `multi_company_company_names_json`: normalized insurer names detected in the article.
+- `multi_company_detected_at`: flag timestamp.
+- `extraction_exclusion_reason`: reason such as `multiple insurer companies detected in article`.
+
+The exclusion grain is source article, not canonical entity. Product and exclusive-use-right canonical rows are preserved when they have clean non-multi-company evidence. Source records derived from flagged articles may use:
+
+- `fact_product_article.extraction_status='excluded_multi_company'`
+- `fact_product_observation.candidate_type='excluded_multi_company'`
+- `fact_exclusive_use_right_observation.status_candidate='excluded_multi_company'`
+- canonical `product_status` or `event_status='rejected_multi_company_only'` only when all evidence is multi-company source evidence.

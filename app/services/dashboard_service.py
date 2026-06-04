@@ -295,7 +295,14 @@ class DashboardService:
         sql = """
             SELECT s.*,
                    (SELECT COUNT(*) FROM fact_product_major_coverage c WHERE c.product_id = s.product_id) AS major_coverage_count,
-                   (SELECT COUNT(DISTINCT article_id) FROM fact_product_article pa WHERE pa.product_id = s.product_id) AS article_count
+                   (
+                     SELECT COUNT(DISTINCT pa.article_id)
+                     FROM fact_product_article pa
+                     JOIN fact_article ar_count ON ar_count.article_id = pa.article_id
+                     WHERE pa.product_id = s.product_id
+                       AND COALESCE(ar_count.multi_company_article_yn, 0) = 0
+                       AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                   ) AS article_count
             FROM vw_product_search s
             WHERE 1=1
               AND TRIM(COALESCE(s.normalized_product_name, '')) NOT LIKE :special_clause_suffix
@@ -310,6 +317,21 @@ class DashboardService:
             params.update(exclusion_params)
         if not request.get("include_review", False):
             sql += " AND s.needs_review = 0"
+        sql += """
+            AND (
+                EXISTS (
+                    SELECT 1
+                    FROM fact_product_article clean_pa
+                    JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
+                    WHERE clean_pa.product_id = s.product_id
+                      AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
+                      AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+                )
+                OR NOT EXISTS (
+                    SELECT 1 FROM fact_product_article any_pa WHERE any_pa.product_id = s.product_id
+                )
+            )
+        """
         min_confidence = float(request.get("min_confidence") or 0)
         sql += " AND s.confidence_total >= :min_confidence"
         params["min_confidence"] = min_confidence
@@ -462,6 +484,8 @@ class DashboardService:
                     FROM fact_product_article pa
                     JOIN fact_article ar ON ar.article_id = pa.article_id
                     WHERE pa.product_id = s.product_id
+                      AND COALESCE(ar.multi_company_article_yn, 0) = 0
+                      AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
                       AND (
                         LOWER(COALESCE(ar.title, '')) LIKE :keyword_like
                         OR LOWER(COALESCE(ar.description, '')) LIKE :keyword_like
@@ -517,10 +541,12 @@ class DashboardService:
                 SELECT ni.*
                 FROM fact_product_narrative_insight ni
                 JOIN (
-                    SELECT product_id, MAX(insight_id) AS insight_id
-                    FROM fact_product_narrative_insight
-                    WHERE product_id IN ({placeholders})
-                    GROUP BY product_id
+                    SELECT ni2.product_id, MAX(ni2.insight_id) AS insight_id
+                    FROM fact_product_narrative_insight ni2
+                    LEFT JOIN fact_article ar ON ar.article_id = ni2.article_id
+                    WHERE ni2.product_id IN ({placeholders})
+                      AND COALESCE(ar.multi_company_article_yn, 0) = 0
+                    GROUP BY ni2.product_id
                 ) latest ON latest.insight_id = ni.insight_id
                 """
             ),
@@ -529,9 +555,11 @@ class DashboardService:
         coverage_rows = db.execute(
             text(
                 f"""
-                SELECT *
-                FROM fact_product_major_coverage
+                SELECT cov.*
+                FROM fact_product_major_coverage cov
+                LEFT JOIN fact_article ar ON ar.article_id = cov.article_id
                 WHERE product_id IN ({placeholders})
+                  AND COALESCE(ar.multi_company_article_yn, 0) = 0
                 ORDER BY product_id, display_order, coverage_id
                 """
             ),
@@ -540,9 +568,11 @@ class DashboardService:
         sales_rows = db.execute(
             text(
                 f"""
-                SELECT *
-                FROM fact_sales_metric_structured
+                SELECT sm.*
+                FROM fact_sales_metric_structured sm
+                LEFT JOIN fact_article ar ON ar.article_id = sm.article_id
                 WHERE product_id IN ({placeholders})
+                  AND COALESCE(ar.multi_company_article_yn, 0) = 0
                 ORDER BY product_id, sales_metric_id
                 """
             ),
@@ -560,6 +590,8 @@ class DashboardService:
                 FROM fact_product_article pa
                 JOIN fact_article a ON a.article_id = pa.article_id
                 WHERE pa.product_id IN ({placeholders})
+                  AND COALESCE(a.multi_company_article_yn, 0) = 0
+                  AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
                 ORDER BY pa.product_id, a.pub_date DESC
                 """
             ),
@@ -568,13 +600,18 @@ class DashboardService:
         alias_rows = db.execute(
             text(
                 f"""
-                SELECT product_id, raw_product_name, normalized_product_name_candidate, source_type, first_seen_at AS sort_at, product_alias_id AS sort_id
-                FROM dim_product_alias
-                WHERE product_id IN ({placeholders})
+                SELECT al.product_id, al.raw_product_name, al.normalized_product_name_candidate, al.source_type, al.first_seen_at AS sort_at, al.product_alias_id AS sort_id
+                FROM dim_product_alias al
+                LEFT JOIN fact_article ar ON ar.article_id = al.article_id
+                WHERE al.product_id IN ({placeholders})
+                  AND COALESCE(ar.multi_company_article_yn, 0) = 0
                 UNION ALL
-                SELECT product_id, raw_product_name, normalized_product_name_candidate, candidate_type AS source_type, created_at AS sort_at, observation_id AS sort_id
-                FROM fact_product_observation
-                WHERE product_id IN ({placeholders})
+                SELECT ob.product_id, ob.raw_product_name, ob.normalized_product_name_candidate, ob.candidate_type AS source_type, ob.created_at AS sort_at, ob.observation_id AS sort_id
+                FROM fact_product_observation ob
+                LEFT JOIN fact_article ar ON ar.article_id = ob.article_id
+                WHERE ob.product_id IN ({placeholders})
+                  AND COALESCE(ar.multi_company_article_yn, 0) = 0
+                  AND COALESCE(ob.candidate_type, 'unknown') != 'excluded_multi_company'
                 ORDER BY product_id, sort_at, sort_id
                 """
             ),

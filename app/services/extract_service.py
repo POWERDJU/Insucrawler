@@ -62,6 +62,11 @@ class ExtractService:
         article = db.get(FactArticle, article_id)
         if not article:
             raise ValueError(f"Article not found: {article_id}")
+        if bool(article.multi_company_article_yn):
+            article.extraction_status = "excluded_multi_company"
+            article.extraction_exclusion_reason = "multiple insurer companies detected in article"
+            db.commit()
+            return {"status": "excluded_multi_company", "article_id": article_id, "product_ids": []}
         screening = self.screening_service.screen_article(db, article)
         if not screening.llm_required_yn and env_bool("LLM_SKIP_LOW_RELEVANCE", True):
             article.extraction_status = "screened_skip"
@@ -144,6 +149,15 @@ class ExtractService:
         article = db.get(FactArticle, article_id)
         if not article:
             raise ValueError(f"Article not found: {article_id}")
+        if bool(article.multi_company_article_yn):
+            article.extraction_status = "excluded_multi_company"
+            article.extraction_exclusion_reason = "multiple insurer companies detected in article"
+            db.flush()
+            return {
+                "status": "excluded_multi_company",
+                "article_id": article_id,
+                "llm_queue_id": None,
+            }
         screening = self.screening_service.screen_article(db, article)
         if not screening.llm_required_yn and env_bool("LLM_SKIP_LOW_RELEVANCE", True):
             article.extraction_status = "screened_skip"
@@ -605,6 +619,11 @@ class ExtractService:
         article = None
         if article_id:
             article = db.get(FactArticle, article_id)
+            if article and bool(article.multi_company_article_yn):
+                article.extraction_status = "excluded_multi_company"
+                article.extraction_exclusion_reason = "multiple insurer companies detected in article"
+                db.flush()
+                return []
             if article and article.pub_date:
                 first_seen_month = article.pub_date.strftime("%Y-%m")
         for product_index, product in enumerate(extraction.products):

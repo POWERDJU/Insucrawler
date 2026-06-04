@@ -251,6 +251,10 @@ class FactArticle(Base, TimestampMixin):
     crawl_task_id = Column(Integer, ForeignKey("fact_crawl_task.crawl_task_id"), nullable=True, index=True)
     content_hash = Column(String(64), nullable=False, unique=True, index=True)
     extraction_status = Column(String(50), default="pending", index=True)
+    multi_company_article_yn = Column(Boolean, default=False, nullable=False, index=True)
+    multi_company_company_names_json = Column(Text)
+    multi_company_detected_at = Column(DateTime)
+    extraction_exclusion_reason = Column(Text)
 
 
 class FactExclusiveUseRight(Base, TimestampMixin):

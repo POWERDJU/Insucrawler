@@ -92,6 +92,8 @@ class MonthlyNewProductService:
                      FROM fact_product_article pa
                      JOIN fact_article a ON a.article_id = pa.article_id
                      WHERE pa.product_id = p.product_id
+                       AND COALESCE(a.multi_company_article_yn, 0) = 0
+                       AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
                    ) AS latest_article_pub_date
             FROM dim_product p
             LEFT JOIN dim_company c ON c.company_id = p.company_id
@@ -102,6 +104,14 @@ class MonthlyNewProductService:
               AND TRIM(COALESCE(p.normalized_product_name, '')) NOT LIKE :rider_suffix
               AND TRIM(COALESCE(p.raw_product_name, '')) NOT LIKE :rider_suffix
               AND COALESCE(c.include_in_product_news_default, 'Y') = 'Y'
+              AND EXISTS (
+                  SELECT 1
+                  FROM fact_product_article clean_pa
+                  JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
+                  WHERE clean_pa.product_id = p.product_id
+                    AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
+                    AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+              )
         """
         params: dict[str, Any] = {
             "year_month": year_month,
@@ -146,6 +156,14 @@ class MonthlyNewProductService:
             LEFT JOIN dim_company c ON c.company_id = p.company_id
             WHERE p.release_year_month IS NOT NULL
               AND COALESCE(c.include_in_product_news_default, 'Y') = 'Y'
+              AND EXISTS (
+                  SELECT 1
+                  FROM fact_product_article clean_pa
+                  JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
+                  WHERE clean_pa.product_id = p.product_id
+                    AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
+                    AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+              )
               AND TRIM(COALESCE(p.normalized_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(p.raw_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(p.normalized_product_name, '')) NOT LIKE :rider_suffix
@@ -206,6 +224,8 @@ class MonthlyNewProductService:
                     FROM fact_product_article pa
                     JOIN fact_article a ON a.article_id = pa.article_id
                     WHERE pa.product_id = :product_id
+                      AND COALESCE(a.multi_company_article_yn, 0) = 0
+                      AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
                     ORDER BY a.pub_date ASC, a.article_id ASC
                     """
                 ),

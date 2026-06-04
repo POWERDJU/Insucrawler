@@ -73,6 +73,10 @@ class BatchLLMService:
         for item in query.limit(max_requests * 5).all():
             if item.provider not in {None, provider} or item.model_name not in {None, model}:
                 continue
+            if self._queue_is_multi_company_article(db, item):
+                item.status = "excluded_multi_company"
+                item.last_error = "Excluded from batch queue because target article is multi-company."
+                continue
             if crawl_job_id is not None and not self._queue_matches_crawl_job(db, item, crawl_job_id):
                 continue
             items.append(item)
@@ -122,6 +126,10 @@ class BatchLLMService:
         file_path = output_path / f"llm_batch_{job.llm_batch_job_id}.jsonl"
         with file_path.open("w", encoding="utf-8") as f:
             for item in items:
+                if self._queue_is_multi_company_article(db, item):
+                    item.status = "excluded_multi_company"
+                    item.last_error = "Excluded from batch input because target article is multi-company."
+                    continue
                 input_text = self.build_queue_input_text(db, item)
                 request = self._batch_generate_content_request(input_text, task_type=task_type)
                 item.crawl_job_id = item.crawl_job_id or crawl_job_id
@@ -248,6 +256,11 @@ class BatchLLMService:
                     continue
                 if self._existing_completed_run(db, job, queue_item):
                     queue_item.status = "completed"
+                    skipped += 1
+                    continue
+                if self._queue_is_multi_company_article(db, queue_item):
+                    queue_item.status = "excluded_multi_company"
+                    queue_item.last_error = "Skipped batch import because target article is multi-company."
                     skipped += 1
                     continue
                 if payload.get("error"):
@@ -383,6 +396,8 @@ class BatchLLMService:
             article = db.get(FactArticle, queue_item.target_id)
             if not article:
                 raise ValueError(f"Article not found: {queue_item.target_id}")
+            if bool(article.multi_company_article_yn):
+                raise ValueError(f"Article is excluded as multi-company: {queue_item.target_id}")
             snippets = self._snippets_for_article(db, article.article_id)
             return self.snippet_service.build_llm_input(
                 title=article.title,
@@ -392,6 +407,25 @@ class BatchLLMService:
                 snippets=snippets,
             )
         raise ValueError(f"Unsupported batch queue target_type: {queue_item.target_type}")
+
+    def _queue_is_multi_company_article(self, db: Session, queue_item: FactLLMQueue) -> bool:
+        if queue_item.target_type == "article":
+            article = db.get(FactArticle, queue_item.target_id)
+            return bool(article and article.multi_company_article_yn)
+        if queue_item.target_type == "product_candidate_cluster":
+            cluster = db.get(FactProductCandidateCluster, queue_item.target_id)
+            if not cluster:
+                return False
+            article_ids = [int(item) for item in json.loads(cluster.source_article_ids_json or "[]")]
+            if not article_ids:
+                return False
+            clean_count = (
+                db.query(FactArticle)
+                .filter(FactArticle.article_id.in_(article_ids), FactArticle.multi_company_article_yn == False)  # noqa: E712
+                .count()
+            )
+            return clean_count == 0
+        return False
 
     def _batch_generate_content_request(self, input_text: str, task_type: str = "extract") -> dict[str, Any]:
         prompt = EXCLUSIVE_RIGHT_EXTRACTOR_PROMPT if task_type == "exclusive_right_extract" else EXTRACTOR_PROMPT

@@ -381,3 +381,12 @@ Run the guard:
 ```powershell
 python scripts/run_company_attribution_goal_check.py
 ```
+
+## Multi-Company Article LLM Guard
+
+Multi-company article filtering is deterministic and does not call Gemini/Qwen.
+
+- Articles with two or more known insurer companies are flagged before extraction.
+- Flagged articles do not create new realtime or batch LLM queues.
+- If a flagged article is already in a submitted batch, import skips only that output.
+- Source-level cleanup never calls LLM and never physically deletes canonical products/events.

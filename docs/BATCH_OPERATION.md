@@ -265,3 +265,21 @@ Batch import uses the same save paths as realtime extraction. Product and exclus
 ```powershell
 python scripts/run_company_attribution_goal_check.py
 ```
+
+## Multi-Company Article Batch Guard
+
+Multi-company article exclusion is applied at article/source level. It is not a product or exclusive-right deletion rule.
+
+- `fact_article.multi_company_article_yn=true` prevents new `extract` and `exclusive_right_extract` queues.
+- Batch JSONL creation marks matching queues as `excluded_multi_company` and does not include them in provider input.
+- Batch import skips outputs whose target article is flagged multi-company.
+- Canonical products/events remain available when at least one non-multi-company source exists.
+- Only-multi-source canonical rows are marked `rejected_multi_company_only` and hidden from default dashboard/export views.
+
+Use dry-run first:
+
+```powershell
+python scripts/audit_multi_company_articles.py --dry-run
+python scripts/cleanup_multi_company_product_extractions.py --dry-run
+python scripts/cleanup_multi_company_exclusive_rights.py --dry-run
+```

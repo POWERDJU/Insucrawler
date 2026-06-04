@@ -34,7 +34,14 @@ class SearchService:
         sql = """
             SELECT s.*,
                    (SELECT COUNT(*) FROM fact_product_major_coverage c WHERE c.product_id = s.product_id) AS major_coverage_count,
-                   (SELECT COUNT(DISTINCT article_id) FROM fact_product_article pa WHERE pa.product_id = s.product_id) AS article_count
+                   (
+                     SELECT COUNT(DISTINCT pa.article_id)
+                     FROM fact_product_article pa
+                     JOIN fact_article ar_count ON ar_count.article_id = pa.article_id
+                     WHERE pa.product_id = s.product_id
+                       AND COALESCE(ar_count.multi_company_article_yn, 0) = 0
+                       AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                   ) AS article_count
             FROM vw_product_search s
             WHERE 1=1
               AND TRIM(COALESCE(s.normalized_product_name, '')) NOT LIKE :special_clause_suffix
@@ -73,6 +80,21 @@ class SearchService:
             params["min_confidence"] = min_confidence
         if not include_review:
             sql += " AND s.needs_review = 0"
+        sql += """
+            AND (
+                EXISTS (
+                    SELECT 1
+                    FROM fact_product_article clean_pa
+                    JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
+                    WHERE clean_pa.product_id = s.product_id
+                      AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
+                      AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+                )
+                OR NOT EXISTS (
+                    SELECT 1 FROM fact_product_article any_pa WHERE any_pa.product_id = s.product_id
+                )
+            )
+        """
         if include_in_product_news_default:
             sql += " AND s.include_in_product_news_default = :include_in_product_news_default"
             params["include_in_product_news_default"] = include_in_product_news_default

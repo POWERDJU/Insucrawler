@@ -47,23 +47,30 @@ VIEW_SQL = {
         LEFT JOIN dim_company c ON c.company_id = p.company_id
         LEFT JOIN dim_product_type pt ON pt.product_type_code = p.primary_product_type_code
         LEFT JOIN (
-            SELECT product_id, COUNT(DISTINCT article_id) AS article_count
-            FROM fact_product_article
-            GROUP BY product_id
+            SELECT pa.product_id, COUNT(DISTINCT pa.article_id) AS article_count
+            FROM fact_product_article pa
+            JOIN fact_article ar ON ar.article_id = pa.article_id
+            WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+              AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+            GROUP BY pa.product_id
         ) pa ON pa.product_id = p.product_id
         LEFT JOIN (
-            SELECT product_id, MAX(insight_id) AS latest_insight_id
-            FROM fact_product_narrative_insight
-            GROUP BY product_id
+            SELECT ni.product_id, MAX(ni.insight_id) AS latest_insight_id
+            FROM fact_product_narrative_insight ni
+            LEFT JOIN fact_article ar ON ar.article_id = ni.article_id
+            WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+            GROUP BY ni.product_id
         ) latest_ni ON latest_ni.product_id = p.product_id
         LEFT JOIN fact_product_narrative_insight ni ON ni.insight_id = latest_ni.latest_insight_id
         LEFT JOIN (
-            SELECT product_id, MAX(feature_id) AS latest_feature_id
-            FROM fact_product_structured_feature
-            GROUP BY product_id
+            SELECT sf.product_id, MAX(sf.feature_id) AS latest_feature_id
+            FROM fact_product_structured_feature sf
+            LEFT JOIN fact_article ar ON ar.article_id = sf.article_id
+            WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+            GROUP BY sf.product_id
         ) latest_sf ON latest_sf.product_id = p.product_id
         LEFT JOIN fact_product_structured_feature sf ON sf.feature_id = latest_sf.latest_feature_id
-        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected')
+        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only')
     """,
     "vw_product_all_type_pivot": """
         CREATE VIEW vw_product_all_type_pivot AS
@@ -107,23 +114,30 @@ VIEW_SQL = {
         LEFT JOIN fact_product_type_assignment a ON a.product_id = p.product_id
         LEFT JOIN dim_product_type pt ON pt.product_type_code = a.product_type_code
         LEFT JOIN (
-            SELECT product_id, COUNT(DISTINCT article_id) AS article_count
-            FROM fact_product_article
-            GROUP BY product_id
+            SELECT pa.product_id, COUNT(DISTINCT pa.article_id) AS article_count
+            FROM fact_product_article pa
+            JOIN fact_article ar ON ar.article_id = pa.article_id
+            WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+              AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+            GROUP BY pa.product_id
         ) pa ON pa.product_id = p.product_id
         LEFT JOIN (
-            SELECT product_id, MAX(insight_id) AS latest_insight_id
-            FROM fact_product_narrative_insight
-            GROUP BY product_id
+            SELECT ni.product_id, MAX(ni.insight_id) AS latest_insight_id
+            FROM fact_product_narrative_insight ni
+            LEFT JOIN fact_article ar ON ar.article_id = ni.article_id
+            WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+            GROUP BY ni.product_id
         ) latest_ni ON latest_ni.product_id = p.product_id
         LEFT JOIN fact_product_narrative_insight ni ON ni.insight_id = latest_ni.latest_insight_id
         LEFT JOIN (
-            SELECT product_id, MAX(feature_id) AS latest_feature_id
-            FROM fact_product_structured_feature
-            GROUP BY product_id
+            SELECT sf.product_id, MAX(sf.feature_id) AS latest_feature_id
+            FROM fact_product_structured_feature sf
+            LEFT JOIN fact_article ar ON ar.article_id = sf.article_id
+            WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+            GROUP BY sf.product_id
         ) latest_sf ON latest_sf.product_id = p.product_id
         LEFT JOIN fact_product_structured_feature sf ON sf.feature_id = latest_sf.latest_feature_id
-        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected')
+        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only')
     """,
     "vw_product_type_coverage_pivot": """
         CREATE VIEW vw_product_type_coverage_pivot AS
@@ -157,11 +171,13 @@ VIEW_SQL = {
             cov.needs_human_review AS needs_review
         FROM fact_product_major_coverage cov
         JOIN dim_product p ON p.product_id = cov.product_id
+        LEFT JOIN fact_article ar ON ar.article_id = cov.article_id
         LEFT JOIN dim_company c ON c.company_id = p.company_id
         LEFT JOIN fact_product_type_assignment a ON a.product_id = p.product_id
         LEFT JOIN dim_product_type pt ON pt.product_type_code = a.product_type_code
         WHERE cov.detail_level IN ('exact_coverage', 'coverage_group')
-          AND COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected')
+          AND COALESCE(ar.multi_company_article_yn, 0) = 0
+          AND COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only')
     """,
     "vw_product_sales_pivot": """
         CREATE VIEW vw_product_sales_pivot AS
@@ -194,10 +210,12 @@ VIEW_SQL = {
             sm.needs_human_review AS needs_review
         FROM fact_sales_metric_structured sm
         JOIN dim_product p ON p.product_id = sm.product_id
+        LEFT JOIN fact_article ar ON ar.article_id = sm.article_id
         LEFT JOIN dim_company c ON c.company_id = p.company_id
         LEFT JOIN fact_product_type_assignment a ON a.product_id = p.product_id
         LEFT JOIN dim_product_type pt ON pt.product_type_code = a.product_type_code
-        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected')
+        WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+          AND COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only')
     """,
     "vw_product_search": """
         CREATE VIEW vw_product_search AS
@@ -242,12 +260,14 @@ VIEW_SQL = {
         LEFT JOIN dim_company c ON c.company_id = p.company_id
         LEFT JOIN dim_product_type pt ON pt.product_type_code = p.primary_product_type_code
         LEFT JOIN (
-            SELECT product_id, MAX(insight_id) AS latest_insight_id
-            FROM fact_product_narrative_insight
-            GROUP BY product_id
+            SELECT ni.product_id, MAX(ni.insight_id) AS latest_insight_id
+            FROM fact_product_narrative_insight ni
+            LEFT JOIN fact_article ar ON ar.article_id = ni.article_id
+            WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+            GROUP BY ni.product_id
         ) latest_ni ON latest_ni.product_id = p.product_id
         LEFT JOIN fact_product_narrative_insight ni ON ni.insight_id = latest_ni.latest_insight_id
-        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected')
+        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only')
     """,
 }
 
@@ -296,6 +316,10 @@ PRODUCT_COLUMN_MIGRATIONS = {
 ARTICLE_COLUMN_MIGRATIONS = {
     "crawl_job_id": "INTEGER",
     "crawl_task_id": "INTEGER",
+    "multi_company_article_yn": "BOOLEAN DEFAULT 0",
+    "multi_company_company_names_json": "TEXT",
+    "multi_company_detected_at": "DATETIME",
+    "extraction_exclusion_reason": "TEXT",
 }
 
 

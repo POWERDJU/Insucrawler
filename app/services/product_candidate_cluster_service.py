@@ -23,6 +23,8 @@ class ProductCandidateClusterService:
         screening: ScreeningResult | None = None,
         snippets: list[Any] | None = None,
     ) -> FactProductCandidateCluster | None:
+        if bool(article.multi_company_article_yn):
+            return None
         local_text = "\n".join(part for part in [article.description, *[s.snippet_text for s in snippets or []]] if part)
         text = "\n".join(part for part in [article.title, local_text] if part)
         candidate_name = self._candidate_product_name(text)
@@ -81,7 +83,20 @@ class ProductCandidateClusterService:
         return cluster
 
     def build_cluster_llm_input(self, db: Session, cluster: FactProductCandidateCluster, max_articles: int = 5, max_chars: int = 5000) -> str:
-        article_ids = json.loads(cluster.source_article_ids_json or "[]")[:max_articles]
+        raw_article_ids = [int(item) for item in json.loads(cluster.source_article_ids_json or "[]")]
+        if raw_article_ids:
+            clean_rows = (
+                db.query(FactArticle.article_id)
+                .filter(
+                    FactArticle.article_id.in_(raw_article_ids),
+                    FactArticle.multi_company_article_yn == False,  # noqa: E712
+                )
+                .order_by(FactArticle.article_id)
+                .all()
+            )
+            article_ids = [int(row[0]) for row in clean_rows][:max_articles]
+        else:
+            article_ids = []
         snippets = (
             db.query(FactArticleSnippet)
             .filter(FactArticleSnippet.article_id.in_(article_ids))
@@ -127,6 +142,14 @@ class ProductCandidateClusterService:
         confidence_total: float = 0.0,
     ) -> list[int]:
         article_ids = [int(item) for item in json.loads(cluster.source_article_ids_json or "[]") if int(item) != article.article_id]
+        if not article_ids:
+            return []
+        article_ids = [
+            int(row[0])
+            for row in db.query(FactArticle.article_id)
+            .filter(FactArticle.article_id.in_(article_ids), FactArticle.multi_company_article_yn == False)  # noqa: E712
+            .all()
+        ]
         if not article_ids:
             return []
         rows = (
