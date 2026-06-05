@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.db.models import DimCompany, DimProductType
+from app.db.models import DimCompany, DimProduct, FactProductCandidateCluster, FactProductObservation, DimProductType
 
 
 def _nullable_text(value: str | None) -> str | None:
@@ -53,6 +53,7 @@ def seed_product_types(db: Session, csv_path: str | Path = "config/product_type_
 def seed_companies(db: Session, csv_path: str | Path = "config/company_dictionary.csv") -> int:
     path = Path(csv_path)
     count = 0
+    _remove_deleted_company_entries(db)
     with path.open("r", encoding="utf-8-sig", newline="") as f:
         for row in csv.DictReader(f):
             normalized = row["company_name_normalized"]
@@ -118,6 +119,36 @@ def seed_companies(db: Session, csv_path: str | Path = "config/company_dictionar
             count += 1
     db.commit()
     return count
+
+
+def _remove_deleted_company_entries(db: Session) -> None:
+    removed_names = {"스타"}
+    rows = (
+        db.query(DimCompany)
+        .filter(
+            (DimCompany.company_name_normalized.in_(removed_names))
+            | (DimCompany.alias.like("%Starr%"))
+            | (DimCompany.alias.like("%스타보험%"))
+        )
+        .all()
+    )
+    for company in rows:
+        for product in db.query(DimProduct).filter(DimProduct.company_id == company.company_id).all():
+            product.company_id = None
+            product.company_name_raw = None
+            product.insurance_type = product.insurance_type or "unknown"
+            product.needs_review = True
+            product.consolidation_status = "review"
+        for observation in db.query(FactProductObservation).filter(FactProductObservation.company_id == company.company_id).all():
+            observation.company_id = None
+            if observation.company_name_raw in removed_names:
+                observation.company_name_raw = None
+            observation.candidate_type = observation.candidate_type or "review_company_attribution"
+        for cluster in db.query(FactProductCandidateCluster).filter(FactProductCandidateCluster.company_id == company.company_id).all():
+            cluster.company_id = None
+            if cluster.candidate_company_name in removed_names:
+                cluster.candidate_company_name = None
+        db.delete(company)
 
 
 def seed_all(db: Session) -> dict[str, int]:

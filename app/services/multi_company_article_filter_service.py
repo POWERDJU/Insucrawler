@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.db.models import DimCompany, FactArticle
+from app.db.models import DimCompany, FactArticle, FactArticleSnippet
 from app.normalizers.company_normalizer import CompanyMatch, CompanyNormalizer
 from app.utils.dates import utcnow
 
@@ -30,7 +30,16 @@ class MultiCompanyArticleFilterService:
         self.normalizer = normalizer or CompanyNormalizer()
 
     def classify_article(self, db: Session, article: FactArticle) -> MultiCompanyArticleResult:
-        text = "\n".join(part for part in [article.title, article.description] if part)
+        snippets = (
+            db.query(FactArticleSnippet.snippet_text)
+            .filter(FactArticleSnippet.article_id == article.article_id)
+            .order_by(FactArticleSnippet.snippet_id)
+            .all()
+            if article.article_id
+            else []
+        )
+        snippet_text = "\n".join(row[0] for row in snippets if row[0])
+        text = "\n".join(part for part in [article.title, article.description, snippet_text] if part)
         return self.classify_text(db, text)
 
     def classify_text(self, db: Session, text: str | None) -> MultiCompanyArticleResult:

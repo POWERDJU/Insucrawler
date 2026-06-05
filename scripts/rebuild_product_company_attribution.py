@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.db.models import DimCompany, DimProduct, FactArticle, FactProductArticle, FactProductObservation
 from app.services.company_attribution_service import CompanyAttributionService
+from app.services.product_company_eligibility import is_product_news_eligible_company
+from app.services.product_attribution_guard_service import ProductAttributionGuardService
 
 
 EXPORT_PATH = ROOT / "data" / "exports" / "product_company_attribution_plan.csv"
@@ -33,11 +35,18 @@ class CompanyAttributionPlanRow:
     reason: str
     article_url: str | None
     action: str
+    non_multi_source_count: int = 0
+    multi_source_count: int = 0
+    marketing_only_source_count: int = 0
+    local_company_evidence: str | None = None
 
 
-def build_product_company_attribution_plan(db: Session, *, limit: int | None = None) -> list[CompanyAttributionPlanRow]:
+def build_product_company_attribution_plan(db: Session, *, limit: int | None = None, product_id: int | None = None) -> list[CompanyAttributionPlanRow]:
     service = CompanyAttributionService()
+    guard = ProductAttributionGuardService(service)
     query = db.query(DimProduct).filter(DimProduct.product_status != "merged").order_by(DimProduct.product_id.asc())
+    if product_id is not None:
+        query = query.filter(DimProduct.product_id == product_id)
     if limit:
         query = query.limit(limit)
     rows: list[CompanyAttributionPlanRow] = []
@@ -55,27 +64,63 @@ def build_product_company_attribution_plan(db: Session, *, limit: int | None = N
             product_or_subject_name=product.normalized_product_name or product.raw_product_name,
         )
         old_company = _company_name(db, product.company_id) or product.company_name_raw
+        result_company = _company_by_name(db, result.company_name_normalized) if result.company_name_normalized else None
+        result_is_eligible = is_product_news_eligible_company(result_company)
         changed = (result.company_id != product.company_id) or (
             bool(result.insurance_type)
             and result.insurance_type != product.insurance_type
             and product.insurance_type != "unknown"
         )
-        if not changed and not result.needs_review:
+        if result.company_name_normalized and not result_is_eligible:
+            changed = product.company_id is not None
+        source_counts = _product_source_counts(db, product, guard)
+        local_company_counts = _product_local_company_counts(db, product, service, guard)
+        dominant_local_company = None
+        if local_company_counts:
+            dominant_local_company = sorted(local_company_counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+            if dominant_local_company and dominant_local_company != _company_name(db, product.company_id):
+                changed = True
+                result = service.resolve_company_for_context(
+                    db,
+                    raw_company_name=dominant_local_company,
+                    local_text=dominant_local_company,
+                    product_or_subject_name=product.normalized_product_name or product.raw_product_name,
+                )
+                result_company = _company_by_name(db, result.company_name_normalized) if result.company_name_normalized else None
+                result_is_eligible = is_product_news_eligible_company(result_company)
+        generic = guard.is_generic_product_name(product.normalized_product_name or product.raw_product_name)
+        marketing_only_entity = bool(
+            generic
+            and source_counts["non_multi_source_count"] > 0
+            and source_counts["non_multi_source_count"] == source_counts["marketing_only_source_count"]
+        )
+        if not changed and not result.needs_review and not marketing_only_entity:
             continue
-        action = "review_company_attribution" if result.needs_review or not result.company_id else "update_company"
+        if marketing_only_entity:
+            action = "mark_rejected_marketing_only"
+        else:
+            action = "review_company_attribution" if result.needs_review or not result.company_id or not result_is_eligible else "update_company"
         rows.append(
             CompanyAttributionPlanRow(
                 entity_type="product",
                 entity_id=product.product_id,
                 old_company=old_company,
-                new_company=result.company_name_normalized,
+                new_company=result.company_name_normalized if result_is_eligible else None,
                 old_insurance_type=product.insurance_type,
-                new_insurance_type=result.insurance_type,
+                new_insurance_type=result.insurance_type if result_is_eligible else None,
                 product_or_subject_name=product.normalized_product_name or product.raw_product_name,
                 confidence=round(result.confidence, 4),
-                reason=result.reason,
+                reason=(
+                    f"{result.reason}; local_company_counts={local_company_counts}"
+                    if local_company_counts
+                    else result.reason
+                ),
                 article_url=context["article_url"],
                 action=action,
+                non_multi_source_count=source_counts["non_multi_source_count"],
+                multi_source_count=source_counts["multi_source_count"],
+                marketing_only_source_count=source_counts["marketing_only_source_count"],
+                local_company_evidence=(context["local_text"] or "")[:500],
             )
         )
     return rows
@@ -87,13 +132,20 @@ def apply_product_company_attribution_plan(db: Session, rows: list[CompanyAttrib
         product = db.get(DimProduct, row.entity_id)
         if not product:
             continue
+        if row.action == "mark_rejected_marketing_only":
+            product.needs_review = True
+            product.product_status = "rejected_marketing_only"
+            product.consolidation_status = "excluded_marketing_only"
+            _exclude_marketing_only_sources(db, product)
+            changed += 1
+            continue
         if row.action != "update_company" or not row.new_company:
             product.needs_review = True
             product.consolidation_status = "review"
             changed += 1
             continue
         company = _company_by_name(db, row.new_company)
-        if not company:
+        if not is_product_news_eligible_company(company):
             product.needs_review = True
             product.consolidation_status = "review"
             changed += 1
@@ -179,6 +231,80 @@ def _product_context(db: Session, product: DimProduct) -> dict[str, str | None]:
     }
 
 
+def _product_source_counts(db: Session, product: DimProduct, guard: ProductAttributionGuardService) -> dict[str, int]:
+    articles = (
+        db.query(FactArticle)
+        .join(FactProductArticle, FactProductArticle.article_id == FactArticle.article_id)
+        .filter(FactProductArticle.product_id == product.product_id)
+        .all()
+    )
+    multi = sum(1 for article in articles if bool(article.multi_company_article_yn))
+    non_multi = len(articles) - multi
+    marketing = sum(
+        1
+        for article in articles
+        if not bool(article.multi_company_article_yn)
+        and guard.is_marketing_only_article(
+            guard.extract_product_local_window(
+                article=article,
+                product_name=product.normalized_product_name or product.raw_product_name,
+            )
+        )
+    )
+    return {
+        "non_multi_source_count": non_multi,
+        "multi_source_count": multi,
+        "marketing_only_source_count": marketing,
+    }
+
+
+def _exclude_marketing_only_sources(db: Session, product: DimProduct) -> None:
+    for link in db.query(FactProductArticle).filter(FactProductArticle.product_id == product.product_id).all():
+        article = db.get(FactArticle, link.article_id)
+        if article and bool(article.multi_company_article_yn):
+            link.extraction_status = "excluded_multi_company"
+        else:
+            link.extraction_status = "excluded_marketing_only"
+        link.needs_review = True
+        if not link.evidence_summary:
+            link.evidence_summary = "excluded because product evidence is marketing-only/generic"
+    for observation in db.query(FactProductObservation).filter(FactProductObservation.product_id == product.product_id).all():
+        observation.candidate_type = "excluded_marketing_only"
+
+
+def _product_local_company_counts(
+    db: Session,
+    product: DimProduct,
+    service: CompanyAttributionService,
+    guard: ProductAttributionGuardService,
+) -> dict[str, int]:
+    articles = (
+        db.query(FactArticle)
+        .join(FactProductArticle, FactProductArticle.article_id == FactArticle.article_id)
+        .filter(FactProductArticle.product_id == product.product_id, FactArticle.multi_company_article_yn == False)  # noqa: E712
+        .all()
+    )
+    counts: dict[str, int] = {}
+    for article in articles:
+        local_window = guard.extract_product_local_window(
+            article=article,
+            product_name=product.normalized_product_name or product.raw_product_name,
+        )
+        result = service.resolve_company_for_context(
+            db,
+            raw_company_name=None,
+            local_text=local_window,
+            article_title=article.title,
+            article_description=article.description,
+            full_text="\n".join(part for part in [article.title, article.description, local_window] if part),
+            product_or_subject_name=product.normalized_product_name or product.raw_product_name,
+        )
+        company = _company_by_name(db, result.company_name_normalized) if result.company_name_normalized else None
+        if result.company_name_normalized and not result.needs_review and is_product_news_eligible_company(company):
+            counts[result.company_name_normalized] = counts.get(result.company_name_normalized, 0) + 1
+    return counts
+
+
 def _company_name(db: Session, company_id: int | None) -> str | None:
     if company_id is None:
         return None
@@ -200,11 +326,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Rebuild product company attribution without LLM calls.")
     parser.add_argument("--apply", action="store_true", help="Apply safe company attribution updates. Defaults to dry-run.")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--product-id", type=int, default=None)
     parser.add_argument("--output", type=Path, default=EXPORT_PATH)
     args = parser.parse_args()
     print("DB 백업 후 실행을 권장합니다. 기본은 dry-run이며 LLM/API 호출은 하지 않습니다.")
     with SessionLocal() as db:
-        rows = build_product_company_attribution_plan(db, limit=args.limit)
+        rows = build_product_company_attribution_plan(db, limit=args.limit, product_id=args.product_id)
         path = export_plan(rows, args.output)
         changed = apply_product_company_attribution_plan(db, rows) if args.apply else 0
         if args.apply:

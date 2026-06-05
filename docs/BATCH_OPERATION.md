@@ -266,6 +266,20 @@ Batch import uses the same save paths as realtime extraction. Product and exclus
 python scripts/run_company_attribution_goal_check.py
 ```
 
+Product batch import also passes through `ProductAttributionGuardService` before `DimProduct` creation. The guard blocks query-company leakage and marketing-only generic products:
+
+- `query_company`, crawl task company, screening matched companies, and LLM company candidates are never final company evidence by themselves.
+- Local product window company evidence wins over query/LLM company candidates.
+- Multi-company source articles are skipped at JSONL creation and again at import.
+- Marketing-only articles with generic names such as `간편건강보험` are kept as observations and do not become active products. Existing rows with only multi-company or marketing-only generic evidence are marked `rejected_marketing_only` and hidden from dashboard/export views.
+- Existing rows can be diagnosed and rebuilt deterministically with `scripts/diagnose_product_company_attribution.py` and `scripts/rebuild_product_company_attribution.py`.
+
+The product attribution goal runner is:
+
+```powershell
+python scripts/run_product_attribution_multicompany_marketing_goal_check.py
+```
+
 ## Multi-Company Article Batch Guard
 
 Multi-company article exclusion is applied at article/source level. It is not a product or exclusive-right deletion rule.

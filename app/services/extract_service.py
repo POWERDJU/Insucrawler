@@ -28,6 +28,8 @@ from app.llm.schemas import extraction_json_schema, verification_json_schema
 from app.services.llm_cache_service import LLMCacheService
 from app.services.llm_cost_service import LLMCostService
 from app.services.llm_queue_service import LLMQueueService
+from app.services.multi_company_article_filter_service import MultiCompanyArticleFilterService
+from app.services.product_attribution_guard_service import ProductAttributionGuardService
 from app.services.product_candidate_cluster_service import ProductCandidateClusterService
 from app.services.product_canonicalization_service import ProductCanonicalizationService, product_core_key_for_keyword
 from app.services.screening_service import ScreeningResult, ScreeningService
@@ -62,6 +64,8 @@ class ExtractService:
         article = db.get(FactArticle, article_id)
         if not article:
             raise ValueError(f"Article not found: {article_id}")
+        if not article.multi_company_company_names_json and not bool(article.multi_company_article_yn):
+            MultiCompanyArticleFilterService().mark_article(db, article)
         if bool(article.multi_company_article_yn):
             article.extraction_status = "excluded_multi_company"
             article.extraction_exclusion_reason = "multiple insurer companies detected in article"
@@ -149,6 +153,8 @@ class ExtractService:
         article = db.get(FactArticle, article_id)
         if not article:
             raise ValueError(f"Article not found: {article_id}")
+        if not article.multi_company_company_names_json and not bool(article.multi_company_article_yn):
+            MultiCompanyArticleFilterService().mark_article(db, article)
         if bool(article.multi_company_article_yn):
             article.extraction_status = "excluded_multi_company"
             article.extraction_exclusion_reason = "multiple insurer companies detected in article"
@@ -613,6 +619,7 @@ class ExtractService:
         issues = extraction_save_issues(extraction)
         product_ids: list[int] = []
         classifier = ProductTypeClassifier()
+        attribution_guard = ProductAttributionGuardService()
         product_plans = self.canonicalization_service.plan_extraction_products(extraction.products, source_text)
         plans_by_index = {plan.index: plan for plan in product_plans}
         first_seen_month = None
@@ -667,23 +674,34 @@ class ExtractService:
             primary_code = rule.primary.code if rule.primary.code != "UNKNOWN" else primary_llm.code
             if primary_code == "UNKNOWN":
                 continue
+            proposed_status = "active" if plan and plan.candidate_type in {"official_name", "launch_name"} else "provisional"
+            guard_result = attribution_guard.validate_product_candidate(
+                db,
+                article=article,
+                product_name=raw_candidate,
+                llm_company_candidate=identity.company_name_candidate or identity.company_name_raw,
+                source_text=source_text,
+                proposed_status=proposed_status,
+            )
+            if not guard_result.create_product:
+                continue
             product_row = repository.upsert_product(
                 db,
                 {
                     "raw_product_name": identity.raw_product_name or identity.normalized_product_name_candidate or canonical_name or "unknown",
                     "normalized_product_name": canonical_name or identity.normalized_product_name_candidate or identity.raw_product_name or "unknown",
-                    "company_name": identity.company_name_candidate or identity.company_name_raw,
+                    "company_name": guard_result.resolved_company_name or identity.company_name_candidate or identity.company_name_raw,
                     "insurance_type": identity.insurance_type,
                     "release_year_month": identity.release_year_month,
                     "release_year_month_basis": identity.release_year_month_basis,
                     "first_seen_month": first_seen_month,
                     "primary_product_type_code": primary_code,
                     "confidence_total": product.confidence.total(),
-                    "needs_review": product.needs_human_review or bool(issues),
-                    "product_status": "active" if plan and plan.candidate_type in {"official_name", "launch_name"} else "provisional",
+                    "needs_review": product.needs_human_review or bool(issues) or guard_result.needs_review,
+                    "product_status": guard_result.product_status,
                     "article_id": article_id,
                     "source_type": "article" if article_id else "manual_text",
-                    "context_text": source_text,
+                    "context_text": guard_result.local_window or source_text,
                     "partner_company_name": plan.partner_company_name if plan else None,
                     "partner_context_summary": plan.partner_context_summary if plan else None,
                     "partner_role": "distribution_partner",

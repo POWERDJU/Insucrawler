@@ -43,6 +43,7 @@ from app.normalizers.product_name_normalizer import (
 from app.utils.dates import current_year_month
 from app.utils.dates import utcnow
 from app.services.company_attribution_service import CompanyAttributionService
+from app.services.product_company_eligibility import is_product_news_eligible_company
 
 
 PROTECTED_RELEASE_BASES = {"explicit_in_article", "manual", "external_grounded_source"}
@@ -118,6 +119,8 @@ def resolve_company_for_product(
     if not attribution.company_name_normalized:
         return None, raw_name, True
     company = get_or_create_company(db, attribution.company_name_normalized, insurance_type or attribution.insurance_type)
+    if not is_product_news_eligible_company(company):
+        return None, attribution.matched_alias or raw_name, True
     return company, attribution.matched_alias or raw_name, attribution.needs_review
 
 

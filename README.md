@@ -546,6 +546,8 @@ Dashboard filter arrays use an empty list to mean "no filter" for that dimension
 Articles that mention two or more known insurer companies are excluded from new product and exclusive-use-right extraction at the article/source level. This is not a canonical entity deletion policy.
 
 - `fact_article.multi_company_article_yn=true` prevents new extract queues, batch input, and import for that article.
+- New crawl saves run snippet creation and `MultiCompanyArticleFilterService` immediately after screening, so articles are flagged before product clustering or LLM queue creation.
+- The multi-company detector uses title, description, and saved snippets. It counts only known insurer companies from the company master and ignores associations, partners, platforms, agencies, and short ambiguous aliases.
 - Existing cleanup affects only records derived from the excluded source article: observations, article links, aliases, coverage, narrative, and sales metrics.
 - Canonical products or exclusive-use-right events remain visible when they have at least one non-multi-company source article.
 - Canonical rows that only have multi-company source evidence are not physically deleted; they are marked as `rejected_multi_company_only` and excluded from default dashboard/export views.
@@ -564,3 +566,26 @@ python scripts/run_multi_company_entity_safe_goal_check.py
 ```
 
 Run dry-run and back up the DB before apply. The scripts do not physically delete products, exclusive-use-right events, or raw articles.
+
+## Product Company Attribution and Marketing-Only Guard
+
+Product company attribution is resolved from the local product evidence window before product creation. `query_company`, crawl task company, screening matched company names, and LLM company candidates are metadata only; they are not enough to create an active product when the local product sentence does not contain reliable company evidence.
+
+The product guard is deterministic and does not call LLM providers.
+
+- Local product window wins over article title, query company, and LLM company candidate.
+- If local company differs from the LLM/query company, the local company is used and the product is marked for review when needed.
+- If only query/company-candidate evidence exists for a generic product name such as `간편건강보험`, the product is not created as active.
+- Marketing-only articles such as TV advertisement or campaign coverage do not create a new active generic product. If an existing row has only multi-company or marketing-only generic evidence, it is marked `rejected_marketing_only` and excluded from dashboard/export views.
+- Batch import uses the same save path, so the guard also protects imported batch results.
+
+Operational diagnostics:
+
+```powershell
+python scripts/diagnose_product_company_attribution.py --product-id 150 --output docs/product-150-company-attribution-diagnosis.md
+python scripts/rebuild_product_company_attribution.py --product-id 150 --output data/exports/product_company_attribution_rebuild_plan_product_150.csv
+python scripts/rebuild_product_company_attribution.py --apply --product-id 150
+python scripts/run_product_attribution_multicompany_marketing_goal_check.py
+```
+
+The goal check writes `docs/product-attribution-multicompany-marketing-goal-result.md` and verifies the guard without realtime LLM calls.

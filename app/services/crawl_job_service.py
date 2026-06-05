@@ -30,8 +30,10 @@ from app.services.extract_service import ExtractService
 from app.services.batch_llm_service import BatchLLMService
 from app.services.exclusive_right_consolidation_service import ExclusiveRightConsolidationService
 from app.services.exclusive_right_service import ExclusiveRightService
+from app.services.multi_company_article_filter_service import MultiCompanyArticleFilterService
 from app.services.product_consolidation_service import ProductConsolidationService
 from app.services.screening_service import ScreeningService
+from app.services.snippet_service import SnippetService
 from app.utils.dates import utcnow
 from app.utils.hashing import sha256_text
 
@@ -649,6 +651,18 @@ class CrawlJobService:
             return False
         self._log_event(db, job.crawl_job_id, task.crawl_task_id, "article_saved", item.title, {"article_id": article.article_id})
         screening = ScreeningService().screen_article(db, article)
+        SnippetService().extract_for_article(db, article)
+        multi_company = MultiCompanyArticleFilterService().mark_article(db, article)
+        if multi_company.is_multi_company:
+            self._log_event(
+                db,
+                job.crawl_job_id,
+                task.crawl_task_id,
+                "article_excluded_multi_company",
+                item.title,
+                {"article_id": article.article_id, "companies": multi_company.company_names},
+            )
+            return True
         if not screening.is_candidate:
             task.articles_irrelevant += 1
         if not screening.llm_required_yn and env_bool("LLM_SKIP_LOW_RELEVANCE", True):

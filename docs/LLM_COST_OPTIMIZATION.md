@@ -264,6 +264,20 @@ PRODUCT_CONSOLIDATION_LLM_MAX_INPUT_CHARS=2500
 배타적사용권 재통합과 품질 보정은 기본적으로 deterministic이다. `scripts/rebuild_exclusive_rights.py`는 기존 event/observation/article/alias를 읽어 local context 기준 subject 귀속, weak subject 제거, 획득년월 재계산, rule-only consolidation을 수행하며 LLM을 호출하지 않는다. LLM은 향후 gray block 수동 검토 옵션에서만 제한적으로 사용할 수 있고, 현황판/조회/Excel export에서는 절대 호출하지 않는다.
 
 전체 배치 전 `python scripts/pre_full_batch_go_check.py`를 실행하면 비용절감 기본값과 UI/export 단순화, 배타적사용권 parser guardrail을 정적으로 확인한다. 이 GO/NO-GO 체크 역시 외부 API와 LLM provider를 호출하지 않는다.
+
+## Deterministic Product Attribution Guard
+
+상품 회사 귀속 보정은 LLM을 추가 호출하지 않는다. `ProductAttributionGuardService`가 저장/import 직전에 local product window를 만들고, `CompanyAttributionService`로 회사 근거를 검증한다.
+
+- query company, crawl task company, screening matched company는 검색/수집 메타데이터이며 최종 회사 fallback이 아니다.
+- Batch output의 회사 후보가 local product window와 충돌하면 local company를 우선하고 review로 낮춘다.
+- 멀티컴퍼니 기사는 queue 생성, Batch JSONL 생성, import 단계에서 모두 차단된다.
+- TV 광고/캠페인-only 기사에서 generic product name만 나온 경우 active product를 만들지 않는다.
+- 진단/재빌드/GOAL 스크립트는 deterministic이며 Gemini/Qwen/Naver API를 호출하지 않는다.
+
+```powershell
+python scripts/run_product_attribution_multicompany_marketing_goal_check.py
+```
 ## List-Level LLM Consolidation
 
 List-level consolidation is an optional administrator workflow for duplicate
