@@ -155,6 +155,7 @@ class ProductFinalAdjudicationService:
         candidate = self._decision_from_provider(provider_output) if provider_output else None
         candidate = self._coerce_recoverable_reject(candidate, payload, article_decision)
         candidate = self._reject_provider_accept_for_wrong_current_identity(candidate, payload)
+        candidate = self._require_canonical_name_for_provider_name_correction(candidate, payload)
         if candidate and candidate.decision in {"accept", "reassign_company", "alias_only"}:
             final_name = candidate.canonical_product_name or payload.current_product_name
             final_name_decision = self.name_validator.validate(
@@ -447,6 +448,55 @@ class ProductFinalAdjudicationService:
                 confidence=min(candidate.confidence, 0.85),
             )
         return candidate
+
+    @staticmethod
+    def _require_canonical_name_for_provider_name_correction(
+        candidate: ProductFinalAdjudicationDecision | None,
+        payload: ProductFinalAdjudicationInput,
+    ) -> ProductFinalAdjudicationDecision | None:
+        if candidate is None or candidate.decision not in {"accept", "reassign_company", "alias_only"}:
+            return candidate
+        current = compact_spaces(payload.current_product_name or "").casefold()
+        canonical = compact_spaces(candidate.canonical_product_name or "").casefold()
+        text = " ".join(
+            part
+            for part in [candidate.reason, candidate.correction_summary, candidate.article_suitability]
+            if part
+        ).casefold()
+        correction_markers = (
+            "current product name",
+            "current name",
+            "incorrect",
+            "not canonical",
+            "descriptive phrase",
+            "generic descriptor",
+            "generic",
+            "contradicted",
+            "corrected",
+            "canonical name",
+            "canonical product name",
+        )
+        if not any(marker in text for marker in correction_markers):
+            return candidate
+        if canonical and canonical != current:
+            return candidate
+        return ProductFinalAdjudicationDecision(
+            decision="review",
+            canonical_product_name=candidate.canonical_product_name,
+            company_name=candidate.company_name or payload.current_company,
+            insurance_type=candidate.insurance_type,
+            product_type_code=candidate.product_type_code,
+            release_year_month=candidate.release_year_month or payload.current_release_year_month,
+            release_year_month_basis=candidate.release_year_month_basis or payload.current_release_year_month_basis,
+            partner_company_name=candidate.partner_company_name or payload.partner_company_name,
+            partner_role=candidate.partner_role or payload.partner_role,
+            article_suitability=candidate.article_suitability,
+            correction_summary=candidate.correction_summary,
+            reason="provider_missing_canonical_product_name_for_name_correction",
+            evidence_quote=candidate.evidence_quote,
+            confidence=min(candidate.confidence, 0.5),
+            provider_called=candidate.provider_called,
+        )
 
     @staticmethod
     def _reason_says_current_product_is_unsupported(reason: str, current_product_name: str | None) -> bool:

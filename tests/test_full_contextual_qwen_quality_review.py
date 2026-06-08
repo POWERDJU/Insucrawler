@@ -245,6 +245,57 @@ def test_product_reject_without_article_support_is_not_coerced_to_review():
     assert result.decision == "reject"
 
 
+def test_product_accept_with_name_correction_requires_structured_canonical_name():
+    payload = ProductFinalAdjudicationInput(
+        current_product_name="Generic Health Insurance",
+        current_company="Example Life",
+        current_product_type="HEALTH_COMPREHENSIVE",
+        current_release_year_month="2026-01",
+        current_release_year_month_basis="explicit_in_article",
+    )
+    candidate = ProductFinalAdjudicationDecision(
+        decision="accept",
+        canonical_product_name=None,
+        company_name="Example Life",
+        product_type_code="HEALTH_COMPREHENSIVE",
+        release_year_month="2026-01",
+        reason="The current product name is a generic descriptor and should be corrected to a canonical product name.",
+        confidence=0.93,
+        provider_called=True,
+    )
+
+    result = ProductFinalAdjudicationService._require_canonical_name_for_provider_name_correction(candidate, payload)
+
+    assert result is not None
+    assert result.decision == "review"
+    assert result.reason == "provider_missing_canonical_product_name_for_name_correction"
+
+
+def test_product_accept_with_structured_canonical_name_keeps_accept():
+    payload = ProductFinalAdjudicationInput(
+        current_product_name="Generic Health Insurance",
+        current_company="Example Life",
+        current_product_type="HEALTH_COMPREHENSIVE",
+        current_release_year_month="2026-01",
+        current_release_year_month_basis="explicit_in_article",
+    )
+    candidate = ProductFinalAdjudicationDecision(
+        decision="accept",
+        canonical_product_name="Example Cancer Care Insurance",
+        company_name="Example Life",
+        product_type_code="CANCER",
+        release_year_month="2026-01",
+        reason="The current product name is generic; canonical product name is Example Cancer Care Insurance.",
+        confidence=0.93,
+        provider_called=True,
+    )
+
+    result = ProductFinalAdjudicationService._require_canonical_name_for_provider_name_correction(candidate, payload)
+
+    assert result is candidate
+    assert result.decision == "accept"
+
+
 def test_product_reject_with_clear_field_correction_can_be_coerced_to_accept():
     payload = ProductFinalAdjudicationInput(
         current_product_name="Old Product",
