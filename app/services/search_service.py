@@ -44,6 +44,7 @@ class SearchService:
                    ) AS article_count
             FROM vw_product_search s
             WHERE 1=1
+              AND LOWER(COALESCE(s.product_status, 'active')) = 'active'
               AND TRIM(COALESCE(s.normalized_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(s.raw_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(s.normalized_product_name, '')) NOT LIKE :rider_suffix

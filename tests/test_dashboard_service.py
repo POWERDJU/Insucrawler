@@ -250,6 +250,20 @@ def test_dashboard_product_list_excludes_special_clause_products(db_session):
     assert result["summary"]["product_count"] == 1
 
 
+def test_dashboard_product_list_excludes_review_status_even_when_review_flag_included(db_session):
+    seed_dashboard_product(db_session, name="대시보드 정상 암보험", product_status="active")
+    seed_dashboard_product(db_session, name="대시보드 상태 리뷰 암보험", product_status="review")
+
+    result = DashboardService().query(
+        db_session,
+        dashboard_request(company_names=[], product_type_codes=[], include_review=True),
+    )
+
+    names = {item["normalized_product_name"] for item in result["products"]}
+    assert names == {"대시보드 정상 암보험"}
+    assert result["summary"]["product_count"] == 1
+
+
 def test_dashboard_release_years_filter_multiple_years(db_session):
     seed_dashboard_product(db_session)
     result = DashboardService().query(

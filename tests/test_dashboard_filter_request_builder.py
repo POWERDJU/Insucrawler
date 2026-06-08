@@ -16,6 +16,11 @@ def test_dashboard_request_keeps_product_type_filter_independent():
     assert 'company_names: selectedInsuranceType ? selectedFilterValues("companyNames") : []' in JS
 
 
+def test_dashboard_request_excludes_review_rows_by_default():
+    assert "include_review: false" in JS
+    assert "include_review: true" not in JS
+
+
 def test_mobile_filter_summary_displays_product_type_names():
     assert "optionLabelsForValues(state.options?.product_types, productTypes, \"code\", \"name\")" in JS
     assert 'compactFilterLabel(productTypeLabels, "상품군 전체")' in JS

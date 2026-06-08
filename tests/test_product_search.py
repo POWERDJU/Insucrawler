@@ -2,17 +2,18 @@ from app.services.ingestion_service import IngestionService
 from app.services.search_service import SearchService
 
 
-def seed_search_product(db, release_year_month=None):
+def seed_search_product(db, release_year_month=None, name="무배당 간편 암보험", product_status="active"):
     IngestionService().upsert_structured_product(
         db,
         {
             "product": {
-                "raw_product_name": "무배당 간편 암보험",
-                "normalized_product_name": "무배당 간편 암보험",
+                "raw_product_name": name,
+                "normalized_product_name": name,
                 "company_name": "삼성화재",
                 "insurance_type": "손해보험",
                 "primary_product_type_code": "CANCER",
                 "release_year_month": release_year_month,
+                "product_status": product_status,
                 "confidence_total": 0.95,
                 "needs_review": False,
             },
@@ -83,6 +84,16 @@ def test_product_search_excludes_special_clause_products(db_session):
     assert "입원일당 특별약관" not in names
     assert "입원일당 특약" not in names
     assert len(result) == 1
+
+
+def test_product_search_excludes_review_status_even_when_review_flag_included(db_session):
+    seed_search_product(db_session, name="검색 정상 암보험", product_status="active")
+    seed_search_product(db_session, name="검색 상태 리뷰 암보험", product_status="review")
+
+    result = SearchService().search_products(db_session, include_review=True)
+
+    names = {item["normalized_product_name"] for item in result}
+    assert names == {"검색 정상 암보험"}
 
 
 def test_company_filter(db_session):

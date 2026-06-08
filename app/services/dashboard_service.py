@@ -130,12 +130,12 @@ class DashboardService:
         }
 
     def demo_status(self, db: Session) -> dict[str, Any]:
-        product_count = db.execute(text("SELECT COUNT(*) FROM dim_product WHERE COALESCE(product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')")).scalar_one()
+        product_count = db.execute(text("SELECT COUNT(*) FROM dim_product WHERE LOWER(COALESCE(product_status, 'active')) = 'active'")).scalar_one()
         article_count = db.execute(text("SELECT COUNT(*) FROM fact_article")).scalar_one()
         return {"has_products": product_count > 0, "product_count": product_count, "article_count": article_count}
 
     def data_status(self, db: Session) -> dict[str, Any]:
-        product_count = db.execute(text("SELECT COUNT(*) FROM dim_product WHERE COALESCE(product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')")).scalar_one()
+        product_count = db.execute(text("SELECT COUNT(*) FROM dim_product WHERE LOWER(COALESCE(product_status, 'active')) = 'active'")).scalar_one()
         article_count = db.execute(text("SELECT COUNT(*) FROM fact_article")).scalar_one()
         exclusive_right_count = db.query(FactExclusiveUseRight).filter(FactExclusiveUseRight.event_status != "merged").count()
         recent_exclusive_right_count_12m = db.query(FactExclusiveUseRight).filter(
@@ -330,6 +330,7 @@ class DashboardService:
                    ) AS article_count
             FROM vw_product_search s
             WHERE 1=1
+              AND LOWER(COALESCE(s.product_status, 'active')) = 'active'
               AND TRIM(COALESCE(s.normalized_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(s.raw_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(s.normalized_product_name, '')) NOT LIKE :rider_suffix

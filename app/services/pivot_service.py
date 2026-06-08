@@ -41,6 +41,8 @@ class PivotService:
         classification_mode = "primary_only"
         if "assignment_role" in df.columns:
             df = df[(df["assignment_role"].isna()) | (df["assignment_role"] == "primary")]
+        if "product_status" in df.columns:
+            df = df[df["product_status"].fillna("active").astype(str).str.lower() == "active"]
         if not include_review and "needs_review" in df.columns:
             df = df[~df["needs_review"].astype(bool)]
         confidence_col = "confidence_total" if "confidence_total" in df.columns else "confidence"

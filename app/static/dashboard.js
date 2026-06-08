@@ -740,7 +740,7 @@ function currentQuery() {
     custom_rows: ["company_name", "product_type_name"],
     custom_columns: [],
     custom_metrics: ["product_count", "article_count"],
-    include_review: true,
+    include_review: false,
     min_confidence: 0,
     include_excluded_policy_products: false,
     keyword,
