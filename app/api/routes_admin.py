@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.db.models import FactLLMBatchJob
+from app.db.database import SessionLocal
+from app.db.models import FactCrawlJob, FactLLMBatchJob
 from app.collectors.naver_news_client import NaverNewsClient
 from app.schemas.admin import (
     AdminAuthRequest,
@@ -13,6 +16,8 @@ from app.schemas.admin import (
     CrawlManualRangeRequest,
     ExclusiveRightConsolidateRequest,
     ExclusiveRightExtractPendingRequest,
+    FullReviewApplyRequest,
+    FullReviewQwenRequest,
     LLMConsolidationReviewRequest,
     LLMBatchCreateRequest,
     NaverNewsSearchPreviewRequest,
@@ -32,8 +37,21 @@ from app.services.product_full_list_consolidation_service import ProductFullList
 from app.services.exclusive_right_consolidation_service import ExclusiveRightConsolidationService
 from app.services.exclusive_right_llm_consolidation_service import ExclusiveRightLLMConsolidationService
 from app.services.exclusive_right_service import ExclusiveRightService
+from app.services.full_data_review_service import FullDataReviewService, FullReviewRequestData
+from app.services.scheduled_refresh_service import ScheduledRefreshService
 
 router = APIRouter()
+
+
+def _run_crawl_job_with_configured_pipeline(crawl_job_id: int) -> None:
+    CrawlJobService().run_job_by_id(crawl_job_id)
+    try:
+        with SessionLocal() as db:
+            job = db.get(FactCrawlJob, crawl_job_id)
+            if job and job.status == "completed" and (job.pipeline_mode or "crawl_only") != "crawl_only":
+                ScheduledRefreshService().run_pipeline_step(db, crawl_job_id=crawl_job_id)
+    except Exception:
+        return
 
 
 def require_admin_token(authorization: str | None = Header(default=None)) -> str:
@@ -43,6 +61,21 @@ def require_admin_token(authorization: str | None = Header(default=None)) -> str
     if not AdminAuthService().validate_token(token):
         raise HTTPException(status_code=401, detail="Invalid or expired admin token")
     return token
+
+
+def _normalize_manual_date_range(request_body: CrawlManualRangeRequest) -> tuple[str, str]:
+    start = date.fromisoformat(request_body.date_from)
+    end = date.fromisoformat(request_body.date_to)
+    today = date.today()
+    if start > today:
+        raise ValueError("date_from cannot be in the future")
+    if end > today:
+        end = today
+    if end < start:
+        raise ValueError("date_to must be greater than or equal to date_from")
+    if (end - start).days > request_body.max_days:
+        raise ValueError(f"manual range cannot exceed {request_body.max_days} days")
+    return start.isoformat(), end.isoformat()
 
 
 @router.post("/auth")
@@ -74,10 +107,15 @@ def create_test_crawl_job(
         exclusive_right_limit=request_body.exclusive_right_limit,
         include_reinsurers=request_body.include_reinsurers,
         include_foreign_branches=request_body.include_foreign_branches,
+        pipeline_mode=request_body.pipeline_mode,
+        include_qwen_adjudication=request_body.include_qwen_adjudication,
+        qwen_priority=request_body.qwen_priority,
+        run_postprocess=request_body.run_postprocess,
+        run_consolidation=request_body.run_consolidation,
         requested_by="admin",
         requested_from=request.client.host if request.client else None,
     )
-    background_tasks.add_task(service.run_job_by_id, job.crawl_job_id)
+    background_tasks.add_task(_run_crawl_job_with_configured_pipeline, job.crawl_job_id)
     return {
         "crawl_job_id": job.crawl_job_id,
         "status": job.status,
@@ -107,10 +145,15 @@ def create_backfill_crawl_job(
         exclusive_right_limit=request_body.exclusive_right_limit,
         include_reinsurers=request_body.include_reinsurers,
         include_foreign_branches=request_body.include_foreign_branches,
+        pipeline_mode=request_body.pipeline_mode,
+        include_qwen_adjudication=request_body.include_qwen_adjudication,
+        qwen_priority=request_body.qwen_priority,
+        run_postprocess=request_body.run_postprocess,
+        run_consolidation=request_body.run_consolidation,
         requested_by="admin",
         requested_from=request.client.host if request.client else None,
     )
-    background_tasks.add_task(service.run_job_by_id, job.crawl_job_id)
+    background_tasks.add_task(_run_crawl_job_with_configured_pipeline, job.crawl_job_id)
     return {
         "crawl_job_id": job.crawl_job_id,
         "status": job.status,
@@ -141,10 +184,15 @@ def create_incremental_crawl_job(
         exclusive_right_limit=request_body.exclusive_right_limit,
         include_reinsurers=request_body.include_reinsurers,
         include_foreign_branches=request_body.include_foreign_branches,
+        pipeline_mode=request_body.pipeline_mode,
+        include_qwen_adjudication=request_body.include_qwen_adjudication,
+        qwen_priority=request_body.qwen_priority,
+        run_postprocess=request_body.run_postprocess,
+        run_consolidation=request_body.run_consolidation,
         requested_by="admin",
         requested_from=request.client.host if request.client else None,
     )
-    background_tasks.add_task(service.run_job_by_id, job.crawl_job_id)
+    background_tasks.add_task(_run_crawl_job_with_configured_pipeline, job.crawl_job_id)
     return {
         "crawl_job_id": job.crawl_job_id,
         "status": job.status,
@@ -161,11 +209,15 @@ def create_manual_range_crawl_job(
     db: Session = Depends(get_db),
     _: str = Depends(require_admin_token),
 ) -> dict:
+    try:
+        date_from, date_to = _normalize_manual_date_range(request_body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     service = CrawlJobService()
     job = service.create_manual_range(
         db,
-        date_from=request_body.date_from,
-        date_to=request_body.date_to,
+        date_from=date_from,
+        date_to=date_to,
         include_llm_extraction=request_body.include_llm_extraction,
         extraction_mode=request_body.extraction_mode,
         include_exclusive_right_pipeline=request_body.include_exclusive_right_pipeline,
@@ -176,13 +228,22 @@ def create_manual_range_crawl_job(
         exclusive_right_limit=request_body.exclusive_right_limit,
         include_reinsurers=request_body.include_reinsurers,
         include_foreign_branches=request_body.include_foreign_branches,
+        pipeline_mode=request_body.pipeline_mode,
+        include_qwen_adjudication=request_body.include_qwen_adjudication,
+        qwen_priority=request_body.qwen_priority,
+        run_postprocess=request_body.run_postprocess,
+        run_consolidation=request_body.run_consolidation,
         requested_by="admin",
         requested_from=request.client.host if request.client else None,
     )
-    background_tasks.add_task(service.run_job_by_id, job.crawl_job_id)
+    background_tasks.add_task(_run_crawl_job_with_configured_pipeline, job.crawl_job_id)
     return {
         "crawl_job_id": job.crawl_job_id,
         "status": job.status,
+        "date_from": job.date_from,
+        "date_to": job.date_to,
+        "pipeline_mode": job.pipeline_mode,
+        "include_qwen_adjudication": job.include_qwen_adjudication,
         "exclusive_right_pipeline_requested": job.include_exclusive_right_pipeline,
         "exclusive_right_pipeline_mode": job.exclusive_right_pipeline_mode,
     }
@@ -230,6 +291,84 @@ def llm_execution_guard_summary(
     _: str = Depends(require_admin_token),
 ) -> dict:
     return LLMExecutionGuardService().summary(db)
+
+
+@router.get("/scheduled-refresh/status")
+def scheduled_refresh_status(
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin_token),
+) -> dict:
+    return ScheduledRefreshService().status(db)
+
+
+@router.post("/full-review/qwen")
+def run_full_qwen_review(
+    request_body: FullReviewQwenRequest,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin_token),
+) -> dict:
+    try:
+        mode = "apply" if request_body.apply is True else request_body.mode
+        return FullDataReviewService().run(
+            db,
+            FullReviewRequestData(
+                mode=mode,
+                review_scope=request_body.review_scope,
+                date_from=request_body.date_from,
+                date_to=request_body.date_to,
+                crawl_job_id=request_body.crawl_job_id,
+                include_rule_review=request_body.include_rule_review,
+                include_qwen=request_body.include_qwen,
+                qwen_priority=request_body.qwen_priority,
+                max_products=request_body.max_products,
+                max_exclusive=request_body.max_exclusive,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/full-review/{review_job_id}")
+def get_full_qwen_review(
+    review_job_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin_token),
+) -> dict:
+    try:
+        return FullDataReviewService().get_job(db, review_job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/full-review/{review_job_id}/apply")
+def apply_full_qwen_review(
+    review_job_id: int,
+    request_body: FullReviewApplyRequest | None = None,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin_token),
+) -> dict:
+    try:
+        body = request_body or FullReviewApplyRequest()
+        return FullDataReviewService().apply_job(
+            db,
+            review_job_id,
+            max_products=body.max_products,
+            max_exclusive=body.max_exclusive,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/full-review/{review_job_id}/cancel")
+def cancel_full_qwen_review(
+    review_job_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_admin_token),
+) -> dict:
+    try:
+        return FullDataReviewService().cancel_job(db, review_job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/exclusive-rights/extract-pending")
@@ -524,7 +663,7 @@ def retry_failed_crawl_tasks(
         job = service.retry_failed(db, crawl_job_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    background_tasks.add_task(service.run_job_by_id, job.crawl_job_id)
+    background_tasks.add_task(_run_crawl_job_with_configured_pipeline, job.crawl_job_id)
     return {"crawl_job_id": job.crawl_job_id, "status": job.status}
 
 

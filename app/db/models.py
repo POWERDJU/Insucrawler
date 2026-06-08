@@ -141,20 +141,6 @@ class FactProductPartner(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("product_id", "partner_id", "article_id", "partner_role", name="uq_product_partner_context"),)
 
 
-class FactProductTypeAssignment(Base, TimestampMixin):
-    __tablename__ = "fact_product_type_assignment"
-
-    assignment_id = Column(Integer, primary_key=True)
-    product_id = Column(Integer, ForeignKey("dim_product.product_id"), nullable=False, index=True)
-    article_id = Column(Integer, ForeignKey("fact_article.article_id"), nullable=True, index=True)
-    product_type_code = Column(String(50), ForeignKey("dim_product_type.product_type_code"), nullable=False, index=True)
-    assignment_role = Column(String(50), nullable=False)
-    classification_basis = Column(Text)
-    evidence_text = Column(Text)
-    confidence = Column(Float, default=0.0)
-    needs_human_review = Column(Boolean, default=False, nullable=False)
-
-
 class FactProductMergeDecision(Base):
     __tablename__ = "fact_product_merge_decision"
 
@@ -492,6 +478,18 @@ class FactCrawlJob(Base, TimestampMixin):
     exclusive_right_consolidation_job_id = Column(Integer, nullable=True)
     exclusive_right_pipeline_status = Column(String(100), default="not_requested")
     exclusive_right_pipeline_error = Column(Text)
+    pipeline_mode = Column(String(100), default="crawl_only", nullable=False, index=True)
+    include_qwen_adjudication = Column(Boolean, default=False, nullable=False)
+    qwen_priority = Column(Boolean, default=True, nullable=False)
+    run_postprocess = Column(Boolean, default=True, nullable=False)
+    run_consolidation = Column(Boolean, default=True, nullable=False)
+    scheduled_run_at = Column(DateTime, nullable=True, index=True)
+    scheduled_timezone = Column(String(100))
+    postprocess_status = Column(String(100), default="not_requested", nullable=False, index=True)
+    consolidation_status = Column(String(100), default="not_requested", nullable=False, index=True)
+    qwen_review_status = Column(String(100), default="not_requested", nullable=False, index=True)
+    full_review_job_id = Column(Integer, nullable=True, index=True)
+    report_path = Column(Text)
     total_tasks = Column(Integer, default=0, nullable=False)
     completed_tasks = Column(Integer, default=0, nullable=False)
     failed_tasks = Column(Integer, default=0, nullable=False)
@@ -504,6 +502,66 @@ class FactCrawlJob(Base, TimestampMixin):
     started_at = Column(DateTime)
     finished_at = Column(DateTime)
     error_message = Column(Text)
+
+
+class FactFullReviewJob(Base, TimestampMixin):
+    __tablename__ = "fact_full_review_job"
+
+    full_review_job_id = Column(Integer, primary_key=True)
+    status = Column(String(50), default="pending", nullable=False, index=True)
+    mode = Column(String(50), default="dry_run", nullable=False, index=True)
+    review_scope = Column(String(100), default="all", nullable=False, index=True)
+    date_from = Column(String(10), nullable=True, index=True)
+    date_to = Column(String(10), nullable=True, index=True)
+    crawl_job_id = Column(Integer, ForeignKey("fact_crawl_job.crawl_job_id"), nullable=True, index=True)
+    include_rule_review = Column(Boolean, default=True, nullable=False)
+    include_qwen = Column(Boolean, default=True, nullable=False)
+    qwen_priority = Column(Boolean, default=True, nullable=False)
+    qwen_provider = Column(String(100), default="qwen")
+    qwen_model_name = Column(String(255))
+    max_products = Column(Integer, default=100, nullable=False)
+    max_exclusive = Column(Integer, default=50, nullable=False)
+    article_count = Column(Integer, default=0, nullable=False)
+    product_candidate_count = Column(Integer, default=0, nullable=False)
+    exclusive_candidate_count = Column(Integer, default=0, nullable=False)
+    rule_reviewed_count = Column(Integer, default=0, nullable=False)
+    qwen_processed_count = Column(Integer, default=0, nullable=False)
+    qwen_provider_called_count = Column(Integer, default=0, nullable=False)
+    qwen_accepted_count = Column(Integer, default=0, nullable=False)
+    qwen_reviewed_count = Column(Integer, default=0, nullable=False)
+    qwen_rejected_count = Column(Integer, default=0, nullable=False)
+    qwen_remaining_count = Column(Integer, default=0, nullable=False)
+    hard_gate_rejected_count = Column(Integer, default=0, nullable=False)
+    applied_count = Column(Integer, default=0, nullable=False)
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+    summary_json = Column(Text)
+    report_path = Column(Text)
+    error_message = Column(Text)
+
+
+class FactQwenReviewAudit(Base, TimestampMixin):
+    __tablename__ = "fact_qwen_review_audit"
+
+    qwen_review_audit_id = Column(Integer, primary_key=True)
+    full_review_job_id = Column(Integer, ForeignKey("fact_full_review_job.full_review_job_id"), nullable=True, index=True)
+    target_type = Column(String(100), nullable=False, index=True)
+    target_id = Column(Integer, nullable=True, index=True)
+    crawl_job_id = Column(Integer, ForeignKey("fact_crawl_job.crawl_job_id"), nullable=True, index=True)
+    article_id = Column(Integer, ForeignKey("fact_article.article_id"), nullable=True, index=True)
+    task_type = Column(String(100), nullable=False, index=True)
+    provider = Column(String(100), default="qwen", nullable=False, index=True)
+    model_name = Column(String(255))
+    decision = Column(String(100), index=True)
+    confidence = Column(Float, default=0.0)
+    reason = Column(Text)
+    evidence_text = Column(Text)
+    before_json = Column(Text)
+    after_json = Column(Text)
+    warnings_json = Column(Text)
+    hard_gate_status = Column(String(100), default="pass", nullable=False, index=True)
+    apply_status = Column(String(100), default="not_applied", nullable=False, index=True)
+    override_reason = Column(Text)
 
 
 class FactCrawlTask(Base, TimestampMixin):

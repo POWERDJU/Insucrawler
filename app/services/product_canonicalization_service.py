@@ -19,7 +19,6 @@ from app.db.models import (
     FactProductObservation,
     FactProductPartner,
     FactProductStructuredFeature,
-    FactProductTypeAssignment,
     FactSalesMetricStructured,
 )
 from app.normalizers.product_name_normalizer import normalize_product_name, normalize_product_name_core
@@ -302,7 +301,6 @@ class ProductCanonicalizationService:
                 link.product_id = canonical.product_id
 
         for model in [
-            FactProductTypeAssignment,
             FactProductStructuredFeature,
             FactProductNarrativeInsight,
             FactProductMajorCoverage,

@@ -62,6 +62,49 @@ def test_release_month_ignores_other_version_and_followup_articles(db_session):
     assert product.release_year_month_source_article_id == launch.article_id
 
 
+def test_versioned_release_month_ignores_series_first_launch_month(db_session):
+    product = repository.upsert_product(
+        db_session,
+        {
+            "raw_product_name": "시그니처 여성건강보험 4.0",
+            "normalized_product_name": "시그니처 여성건강보험 4.0",
+            "company_name": "한화손해보험",
+            "insurance_type": "손해보험",
+            "release_year_month": None,
+            "release_year_month_basis": "unknown",
+            "primary_product_type_code": "HEALTH_COMPREHENSIVE",
+            "needs_review": False,
+        },
+    )
+    series_history = _article(
+        db_session,
+        "series-history",
+        "한화손해보험, 시그니처 여성건강보험 4.0 출시",
+        datetime(2026, 1, 5),
+        "한화 시그니처 여성건강보험 시리즈는 2023년 7월 1.0 출시를 시작했다.",
+    )
+    clean_launch = _article(
+        db_session,
+        "sig4-clean",
+        "한화손해보험, 시그니처 여성건강보험 4.0 출시",
+        datetime(2026, 1, 4),
+        "한화손해보험이 시그니처 여성건강보험 4.0을 출시했다.",
+    )
+    old_series = _article(
+        db_session,
+        "sig-series-old",
+        "한화손해보험, 시그니처 여성건강보험 출시",
+        datetime(2025, 7, 14),
+        "지난해 여성 건강보험을 출시했다.",
+    )
+    for article in [old_series, series_history, clean_launch]:
+        repository.link_product_article(db_session, product.product_id, article.article_id)
+    db_session.refresh(product)
+
+    assert product.release_year_month == "2026-01"
+    assert product.release_year_month_source_article_id == clean_launch.article_id
+
+
 def test_release_month_uses_earliest_direct_launch_article_for_same_product(db_session):
     product = repository.upsert_product(
         db_session,

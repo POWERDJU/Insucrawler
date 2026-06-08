@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.company_service import CHANGED_STATUSES, CompanyService, FOREIGN_BRANCH_ROLES, REINSURER_ROLES
+from app.services.coverage_dedupe_service import dedupe_major_coverages
 from app.services.pivot_service import PivotService
 from app.services.product_exclusion_service import product_policy_exclusion_sql
 from app.utils.release_display import display_release_year_month, visible_release_years
@@ -48,6 +49,26 @@ METRICS = {
     "max_amount_max": {"name": "max_amount_max", "agg": "max", "field": "max_amount_krw"},
     "sales_count_sum": {"name": "sales_count_sum", "agg": "sum", "field": "metric_value", "filter_metric_names": ["판매건수"]},
     "monthly_premium_sum": {"name": "monthly_premium_sum", "agg": "sum", "field": "metric_value", "filter_metric_names": ["월초보험료", "보장월초보험료"]},
+}
+
+
+COMPARISON_EXPORT_EXCLUDED_COLUMNS = {
+    "canonical_product_id",
+    "product_status",
+    "상품명 alias 목록",
+    "상품통합 상태",
+    "통합근거 요약",
+    "partner_company",
+    "source_article_urls",
+    "원문 상품명",
+    "원문 회사명",
+    "최초 확인월",
+    "고지유형",
+    "납입기간",
+    "보험기간",
+    "확인 필요 정보",
+    "미확인 필드",
+    "주요보장2 최대보장금액",
 }
 
 
@@ -109,12 +130,12 @@ class DashboardService:
         }
 
     def demo_status(self, db: Session) -> dict[str, Any]:
-        product_count = db.execute(text("SELECT COUNT(*) FROM dim_product WHERE COALESCE(product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_marketing_only')")).scalar_one()
+        product_count = db.execute(text("SELECT COUNT(*) FROM dim_product WHERE COALESCE(product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')")).scalar_one()
         article_count = db.execute(text("SELECT COUNT(*) FROM fact_article")).scalar_one()
         return {"has_products": product_count > 0, "product_count": product_count, "article_count": article_count}
 
     def data_status(self, db: Session) -> dict[str, Any]:
-        product_count = db.execute(text("SELECT COUNT(*) FROM dim_product WHERE COALESCE(product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_marketing_only')")).scalar_one()
+        product_count = db.execute(text("SELECT COUNT(*) FROM dim_product WHERE COALESCE(product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')")).scalar_one()
         article_count = db.execute(text("SELECT COUNT(*) FROM fact_article")).scalar_one()
         exclusive_right_count = db.query(FactExclusiveUseRight).filter(FactExclusiveUseRight.event_status != "merged").count()
         recent_exclusive_right_count_12m = db.query(FactExclusiveUseRight).filter(
@@ -149,7 +170,7 @@ class DashboardService:
     def query(self, db: Session, request: dict[str, Any]) -> dict[str, Any]:
         pivot_spec = self._pivot_spec(request)
         filters = self._pivot_filters(db, request)
-        classification_mode = request.get("classification_mode") or "include_secondary"
+        classification_mode = "primary_only"
         pivot_result = PivotService().run_pivot(
             db,
             base=pivot_spec["base"],
@@ -166,7 +187,11 @@ class DashboardService:
         return {"summary": summary, "pivot_result": pivot_result, "products": products}
 
     def export_comparison_workbook(self, db: Session, request: dict[str, Any]) -> BytesIO:
-        products = self._products(db, request)
+        products = [
+            product
+            for product in self._products(db, request)
+            if str(product.get("product_status") or "active").lower() == "active"
+        ]
         rows = self._comparison_rows(db, products)
         columns = self._comparison_columns(rows)
         duplicate_warning_rows = self._duplicate_warning_rows(db, products)
@@ -301,7 +326,7 @@ class DashboardService:
                      JOIN fact_article ar_count ON ar_count.article_id = pa.article_id
                      WHERE pa.product_id = s.product_id
                        AND COALESCE(ar_count.multi_company_article_yn, 0) = 0
-                       AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                       AND COALESCE(pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                    ) AS article_count
             FROM vw_product_search s
             WHERE 1=1
@@ -325,7 +350,7 @@ class DashboardService:
                     JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
                     WHERE clean_pa.product_id = s.product_id
                       AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
-                      AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+                      AND COALESCE(clean_pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                 )
                 OR NOT EXISTS (
                     SELECT 1 FROM fact_product_article any_pa WHERE any_pa.product_id = s.product_id
@@ -365,18 +390,7 @@ class DashboardService:
                 key = f"type_{idx}"
                 placeholders.append(f":{key}")
                 params[key] = value
-            if (request.get("classification_mode") or "include_secondary") == "include_secondary":
-                sql += f"""
-                    AND (
-                        s.primary_product_type_code IN ({','.join(placeholders)})
-                        OR EXISTS (
-                            SELECT 1 FROM fact_product_type_assignment a
-                            WHERE a.product_id = s.product_id AND a.product_type_code IN ({','.join(placeholders)})
-                        )
-                    )
-                """
-            else:
-                sql += f" AND s.primary_product_type_code IN ({','.join(placeholders)})"
+            sql += f" AND s.primary_product_type_code IN ({','.join(placeholders)})"
         keyword_sql, keyword_params = self._keyword_search_sql(request.get("keyword"))
         sql += keyword_sql
         params.update(keyword_params)
@@ -385,8 +399,6 @@ class DashboardService:
         products = []
         for row in rows:
             item = dict(row)
-            secondary = item.get("secondary_product_types")
-            item["secondary_product_types"] = [part for part in secondary.split(",") if part] if secondary else []
             item["needs_review"] = bool(item.get("needs_review"))
             item["release_year_month"] = display_release_year_month(item.get("release_year_month"))
             if request.get("keyword"):
@@ -485,7 +497,7 @@ class DashboardService:
                     JOIN fact_article ar ON ar.article_id = pa.article_id
                     WHERE pa.product_id = s.product_id
                       AND COALESCE(ar.multi_company_article_yn, 0) = 0
-                      AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                      AND COALESCE(pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                       AND (
                         LOWER(COALESCE(ar.title, '')) LIKE :keyword_like
                         OR LOWER(COALESCE(ar.description, '')) LIKE :keyword_like
@@ -591,7 +603,7 @@ class DashboardService:
                 JOIN fact_article a ON a.article_id = pa.article_id
                 WHERE pa.product_id IN ({placeholders})
                   AND COALESCE(a.multi_company_article_yn, 0) = 0
-                  AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                  AND COALESCE(pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                 ORDER BY pa.product_id, a.pub_date DESC
                 """
             ),
@@ -611,7 +623,7 @@ class DashboardService:
                 LEFT JOIN fact_article ar ON ar.article_id = ob.article_id
                 WHERE ob.product_id IN ({placeholders})
                   AND COALESCE(ar.multi_company_article_yn, 0) = 0
-                  AND COALESCE(ob.candidate_type, 'unknown') != 'excluded_multi_company'
+                  AND COALESCE(ob.candidate_type, 'unknown') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                 ORDER BY product_id, sort_at, sort_id
                 """
             ),
@@ -642,7 +654,10 @@ class DashboardService:
         ).mappings().all()
         feature_by_product = {row["product_id"]: dict(row) for row in feature_rows}
         insight_by_product = {row["product_id"]: dict(row) for row in insight_rows}
-        coverages_by_product = self._group_by_product(coverage_rows)
+        coverages_by_product = {
+            product_id: dedupe_major_coverages(items)[0]
+            for product_id, items in self._group_by_product(coverage_rows).items()
+        }
         sales_by_product = self._group_by_product(sales_rows)
         articles_by_product = self._group_by_product(article_rows)
         aliases_by_product = self._group_by_product(alias_rows)
@@ -754,7 +769,7 @@ class DashboardService:
                 prefix = f"관련기사{index}"
                 row[f"{prefix} 제목"] = article.get("title")
                 row[f"{prefix} 발행일"] = self._excel_value(article.get("pub_date"))
-            rows.append(row)
+            rows.append(self._filter_comparison_export_row(row))
         return rows
 
     def _duplicate_warning_rows(self, db: Session, products: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -812,28 +827,15 @@ class DashboardService:
     def _comparison_columns(rows: list[dict[str, Any]]) -> list[str]:
         preferred = [
             "상품 ID",
-            "canonical_product_id",
-            "product_status",
-            "상품명 alias 목록",
-            "상품통합 상태",
-            "통합근거 요약",
-            "partner_company",
-            "source_article_urls",
             "상품명",
-            "원문 상품명",
             "보험회사",
-            "원문 회사명",
             "출시년월",
-            "최초 확인월",
             "대표 보종군",
             "가입연령",
-            "고지유형",
             "판매채널",
             "간편심사 여부",
             "비대면 여부",
             "갱신/비갱신",
-            "납입기간",
-            "보험기간",
             "상품특징 요약",
             "상품개발 관점 요약",
             "마케팅 요약",
@@ -844,15 +846,17 @@ class DashboardService:
             "판매 요약",
             "차별화 요약",
             "리스크/유의사항",
-            "확인 필요 정보",
-            "미확인 필드",
         ]
         discovered: list[str] = []
         for row in rows:
             for key in row:
-                if key not in preferred and key not in discovered:
+                if key not in COMPARISON_EXPORT_EXCLUDED_COLUMNS and key not in preferred and key not in discovered:
                     discovered.append(key)
         return preferred + discovered
+
+    @staticmethod
+    def _filter_comparison_export_row(row: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in row.items() if key not in COMPARISON_EXPORT_EXCLUDED_COLUMNS}
 
     @staticmethod
     def _compact_labeled_text(items: list[tuple[str, Any]], separator: str = "\n") -> str:

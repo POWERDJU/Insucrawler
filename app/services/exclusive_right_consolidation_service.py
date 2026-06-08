@@ -69,7 +69,9 @@ class ExclusiveRightBlockingService:
         date_from: str | None = None,
         date_to: str | None = None,
     ) -> list[ExclusiveRightBlock]:
-        query = db.query(FactExclusiveUseRight).filter(FactExclusiveUseRight.event_status.notin_(["merged", "rejected"]))
+        query = db.query(FactExclusiveUseRight).filter(
+            FactExclusiveUseRight.event_status.notin_(["merged", "rejected", "rejected_multi_company_only"])
+        )
         if crawl_job_id is not None or date_from or date_to:
             query = query.join(FactExclusiveUseRightArticle, FactExclusiveUseRightArticle.exclusive_right_id == FactExclusiveUseRight.exclusive_right_id)
             query = query.join(FactArticle, FactArticle.article_id == FactExclusiveUseRightArticle.article_id)
@@ -114,7 +116,7 @@ class ExclusiveRightBlockingService:
         return blocks
 
     def same_block(self, left: FactExclusiveUseRight, right: FactExclusiveUseRight) -> bool:
-        if left.company_id and right.company_id and left.company_id != right.company_id:
+        if not self._same_company_context(left, right):
             return False
         if not self._month_close(left.acquired_year_month, right.acquired_year_month):
             return False
@@ -128,15 +130,31 @@ class ExclusiveRightBlockingService:
             scores["evidence_overlap"],
         )
         shared_tokens = self._shared_high_info_tokens(left, right)
+        if core_equal:
+            return True
+        left_weak = is_generic_or_weak_subject(left.subject_name) or has_bad_subject_tail(left.subject_name)
+        right_weak = is_generic_or_weak_subject(right.subject_name) or has_bad_subject_tail(right.subject_name)
+        if left_weak != right_weak and left.exclusivity_months == right.exclusivity_months:
+            return True
         return (
-            core_equal
-            or name_similarity >= 0.82
-            or scores["subject_overlap"] >= 0.55
-            or scores["component_overlap"] >= 0.55
-            or scores["evidence_overlap"] >= 0.50
-            or context_similarity >= 0.50
-            or len(shared_tokens) >= 2
+            name_similarity >= 0.82
+            or scores["subject_overlap"] >= 0.65
+            or scores["component_overlap"] >= 0.65
+            or (scores["evidence_overlap"] >= 0.55 and len(shared_tokens) >= 2)
+            or (context_similarity >= 0.65 and len(shared_tokens) >= 2)
         )
+
+    @staticmethod
+    def _same_company_context(left: FactExclusiveUseRight, right: FactExclusiveUseRight) -> bool:
+        if left.company_id is not None and right.company_id is not None:
+            return left.company_id == right.company_id
+        left_name = normalize_search_key(left.company_name_normalized)
+        right_name = normalize_search_key(right.company_name_normalized)
+        if left_name and right_name:
+            return left_name == right_name
+        if left.company_id is None and right.company_id is None and not left_name and not right_name:
+            return True
+        return False
 
     @staticmethod
     def _month_close(left: str | None, right: str | None) -> bool:
@@ -210,8 +228,9 @@ class ExclusiveRightConsolidationService:
             action = self._block_action(block.candidates)
             if action == "review":
                 review_count += 1
-                for candidate in block.candidates:
-                    candidate.needs_review = True
+                if mode != "dry_run":
+                    for candidate in block.candidates:
+                        candidate.needs_review = True
                 continue
             if mode == "dry_run":
                 continue

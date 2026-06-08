@@ -82,13 +82,13 @@ filters: `query`, `source_api`, `pub_date_from`, `pub_date_to`, `extraction_stat
 
 `GET /api/products/search`
 
-filters: `q`, `company_name`, `insurance_type`, `product_type_code`, `release_year_month_from`, `release_year_month_to`, `include_secondary_types`, `min_confidence`, `include_review`, `company_role`, `status_2024_2026`, `include_reinsurers`, `include_foreign_branches`, `include_inactive_or_changed_companies`.
+filters: `q`, `company_name`, `insurance_type`, `product_type_code`, `release_year_month_from`, `release_year_month_to`, `min_confidence`, `include_review`, `company_role`, `status_2024_2026`, `include_reinsurers`, `include_foreign_branches`, `include_inactive_or_changed_companies`. `product_type_code`는 대표 보종군(`dim_product.primary_product_type_code`) 기준으로만 검색한다.
 
-`GET /api/products/{product_id}` returns product, type assignments, features, narrative insights, coverages, sales metrics, related articles, release month source fields, and `product_aliases`.
+`GET /api/products/{product_id}` returns product, representative product type, features, narrative insights, coverages, sales metrics, related articles, release month source fields, and `product_aliases`. Optional query `debug=true` also returns `raw_coverages`; ordinary responses only return deduplicated `major_coverages`.
 
 Product detail response includes `release_year_month_basis`, `release_year_month_source_article_id`, `release_year_month_source_type`, `release_year_month_inferred_at`. When the basis is `earliest_related_article_month`, the release month was inferred from the earliest related article month.
 
-`major_coverages` is deduplicated before response by normalized coverage name, risk area, benefit type, amount, and condition. The dashboard applies the same defensive dedupe for both PC table and mobile coverage cards.
+`major_coverages` is deduplicated before response by normalized coverage name, risk area, benefit type, amount, and condition. Component families such as childbirth support, pregnancy support, legal cost, and premium refund are also deduped for display without deleting source coverage rows. The dashboard applies the same defensive dedupe for both PC table and mobile coverage cards.
 
 `product_aliases` items include `raw_product_name`, `normalized_product_name_candidate`, `product_core_key`, `article_id`, `source_type`, `first_seen_at`, `last_seen_at`, and `observation_count`.
 
@@ -119,7 +119,7 @@ Returns alias matches such as `DGB생명` → `iM라이프생명`.
 ```json
 {
   "base": "product",
-  "classification_mode": "include_secondary",
+  "classification_mode": "primary_only",
   "rows": ["company_name", "product_type_name"],
   "columns": ["release_year_month"],
   "filters": {},
@@ -221,7 +221,7 @@ Query parameters:
 
 필터 조건을 받아 `summary`, `pivot_result`, `products`를 함께 반환한다. 대시보드 화면은 `products`를 상품 비교표로 표시하며 `pivot_result`는 기존 API 호환을 위해 유지한다.
 
-대시보드 UI는 피벗 요약을 표시하지 않는다. `classification_mode="include_secondary"`, `pivot_preset="custom"`, `custom_columns=[]`, `custom_rows=["company_name", "product_type_name"]`을 고정으로 사용한다.
+대시보드 UI는 피벗 요약을 표시하지 않는다. 보종군은 대표 보종군만 사용하므로 `classification_mode="primary_only"`, `pivot_preset="custom"`, `custom_columns=[]`, `custom_rows=["company_name", "product_type_name"]`을 고정으로 사용한다.
 
 화면 필터는 출시년도, 업종, 보험회사, 보종군 순서로 제공한다. 보험회사 목록은 업종 선택 전에는 비어 있고, `생명보험` 또는 `손해보험` 선택 후 해당 업종 회사만 체크박스로 표시한다. 출시년도, 보험회사, 보종군은 체크박스형 다중 선택이며 `전체선택` 상태는 request 배열을 빈 배열로 보내 필터 없음으로 표현한다.
 
@@ -235,7 +235,7 @@ Query parameters:
   "insurance_type": "전체",
   "company_names": [],
   "product_type_codes": [],
-  "classification_mode": "include_secondary",
+  "classification_mode": "primary_only",
   "pivot_preset": "custom",
   "custom_rows": ["company_name", "product_type_name"],
   "custom_columns": [],
@@ -261,7 +261,7 @@ Response content type:
 
 `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
 
-다운로드 파일명은 `insurance_product_comparison.xlsx`이다. Excel sheet는 `상품 비교표`이며 상품 1개를 1행으로 두고 항목을 컬럼으로 펼친 가로형 비교표를 반환한다. 기본 컬럼은 상품 ID, 상품명, 원문 상품명, 보험회사, 원문 회사명, 출시년월, 최초 확인월, 대표 보종군, 가입연령, 고지유형, 판매채널, 갱신/비갱신, 납입기간, 보험기간, 요약 항목이다. 주요보장, 판매실적, 관련기사는 `주요보장1 보장명`, `판매실적1 항목`, `관련기사1 제목`처럼 번호 컬럼으로 펼친다. 보조 보종군, 항목 구분, 항목명, 값, 근거/설명, confidence, 검수필요, 관련 URL은 포함하지 않는다.
+다운로드 파일명은 `insurance_product_comparison.xlsx`이다. Excel sheet는 `상품 비교표`이며 상품 1개를 1행으로 두고 항목을 컬럼으로 펼친 가로형 비교표를 반환한다. 기본 컬럼은 상품 ID, 상품명, 원문 상품명, 보험회사, 원문 회사명, 출시년월, 최초 확인월, 대표 보종군, 가입연령, 고지유형, 판매채널, 갱신/비갱신, 납입기간, 보험기간, 요약 항목이다. 주요보장, 판매실적, 관련기사는 `주요보장1 보장명`, `판매실적1 항목`, `관련기사1 제목`처럼 번호 컬럼으로 펼친다. 항목 구분, 항목명, 값, 근거/설명, confidence, 검수필요, 관련 URL은 포함하지 않는다.
 
 ## Admin Crawl Jobs
 
@@ -925,12 +925,124 @@ applies only validator-approved merge groups. The endpoint is disabled unless
 
 ### Dashboard filter semantics
 
-Dashboard filter arrays use an empty list to mean "no filter" for that dimension. `release_years=[]` means all release years, `company_names=[]` means all companies in the selected insurance type or all companies when insurance type is all, and `product_type_codes=[]` means all product type groups. When `product_type_codes` is not empty, the product type filter is always applied independently of insurance type and company selection. With `classification_mode="include_secondary"`, both `primary_product_type_code` and secondary `fact_product_type_assignment` rows are searched. `/api/dashboard/query` and `/api/dashboard/export` use the same product selection logic.
+Dashboard filter arrays use an empty list to mean "no filter" for that dimension. `release_years=[]` means all release years, `company_names=[]` means all companies in the selected insurance type or all companies when insurance type is all, and `product_type_codes=[]` means all product type groups. When `product_type_codes` is not empty, the product type filter is always applied independently of insurance type and company selection. Product type filtering uses only the representative `dim_product.primary_product_type_code`; secondary product type assignments are no longer stored or searched. `/api/dashboard/query` and `/api/dashboard/export` use the same product selection logic.
 
 ## Multi-Company Article Default Exclusion
 
 Default product and exclusive-use-right APIs exclude records derived only from articles flagged with `fact_article.multi_company_article_yn=true`.
 
 - `/api/dashboard/query`, `/api/dashboard/export`, product search, and monthly new-product boards keep canonical products with non-multi-company evidence and exclude only multi-company source records from counts, aliases, related articles, coverage, narrative, and sales aggregations.
+
+## Product quality exclusion policy
+
+Default user-facing product APIs exclude rows with these source/data-quality statuses:
+
+- `merged`
+- `rejected_multi_company_only`
+- `rejected_marketing_only`
+- `rejected_ineligible_article_only`
+- `excluded_invalid_industry_product_type`
+
+`excluded_invalid_industry_product_type` is assigned when the representative product type is incompatible with the normalized insurer industry, for example nonlife + whole-life/death or variable/UL, or life + auto/pet/travel/property-expense. The source row is kept for audit and review.
+
+Mixed financial-institution roundup articles are excluded at the article/source level when insurer news is mixed with banks, securities firms, card companies, or non-insurance financial products such as deposits, loans, funds, ETFs, or index-linked deposits. Bank/card-primary articles are also excluded when insurance coverage/service appears only as an ancillary benefit and the title is not an insurance product-launch subject. The raw article remains stored, but product/exclusive-right observations, aliases, article links, coverage, narrative, and sales records from that source are excluded from default product and exclusive-right views unless another clean source supports the same canonical entity.
+
+Canonical product names are cleaned before save with the Korean discourse-prefix normalizer. Leading connectors such as `한편`, `또한`, `아울러`, `다만`, `그러나`, and `물론` are removed only from the beginning of the product-name candidate. Original mentions can still appear in alias/observation data. If the cleaned name is generic or weak, the product is not created as an active row.
+
+`GET /api/dashboard/monthly-new-products` uses the server current month plus previous month when `year_month` is omitted. When `year_month=YYYY-MM` is provided, it returns only that explicit month, with the existing `fallback_latest` behavior.
+
+The monthly new-product response can include:
+
+```json
+{
+  "months": ["2026-06", "2026-05"],
+  "display_period": "2026년 6월 / 2026년 5월"
+}
+```
+
+The monthly board, dashboard query, search, and Excel export do not call an LLM.
 - `/api/exclusive-rights`, `/api/exclusive-rights/export`, and `/api/dashboard/recent-exclusive-rights` exclude `event_status in ('merged', 'rejected', 'rejected_multi_company_only')` and require non-multi-company article evidence for linked events.
 - Raw article records are not removed. Admin/debug tooling can inspect flagged source articles separately.
+## Major Coverage Dedupe
+
+`GET /api/products/{product_id}` returns deduped `major_coverages` by default.
+The raw `fact_product_major_coverage` rows are exposed only when
+`debug=true`, through `raw_coverages` and `coverage_dedupe_summary`.
+
+Dashboard product comparison export uses the same deduped major coverage list.
+Render/export paths must not call LLM providers.
+
+## Contextual Extraction Quality Semantics
+
+Default user-facing APIs expose active rows after quality guards. Rows are
+review-only or skipped from default active views when caused by article
+ineligibility, weak/generic product names, ambiguous local company attribution,
+reinsurer/foreign-branch ownership, invalid exclusive-right subjects, future
+exclusive acquired months, or unsupported sales metric evidence.
+
+Pivot `include_secondary` semantics remain `COUNT(DISTINCT product_id)`.
+Article, product, coverage, sales metric, and LLM run grains must not be mixed
+without explicit de-duplication.
+
+## Full Review and Refresh Admin APIs
+
+`POST /api/admin/full-review/qwen`
+
+Runs a full data-review chunk. Rule review is deterministic. Qwen final
+adjudication is called only when `ENABLE_FINAL_ADJUDICATION_LLM=true` and a
+final-adjudication provider is configured.
+
+Request:
+
+```json
+{
+  "mode": "dry_run",
+  "review_scope": "all",
+  "date_from": "2025-01-01",
+  "date_to": "2026-05-31",
+  "crawl_job_id": null,
+  "include_rule_review": true,
+  "include_qwen": true,
+  "qwen_priority": true,
+  "max_products": 50,
+  "max_exclusive": 30
+}
+```
+
+Response includes `full_review_job_id`, target counts, Qwen processed/provider
+called/accepted/reviewed/rejected/remaining counts, and `report_path`.
+
+`GET /api/admin/full-review/{review_job_id}` returns the stored review job and
+parsed summary. `POST /api/admin/full-review/{review_job_id}/apply` reruns the
+same review in apply mode. `POST /api/admin/full-review/{review_job_id}/cancel`
+marks a pending/running job as cancelled.
+
+`GET /api/admin/scheduled-refresh/status`
+
+Returns scheduler config, next run time, running job count, and latest scheduled
+refresh job. The scheduler is opt-in through:
+
+```env
+SCHEDULED_REFRESH_ENABLED=true
+SCHEDULED_REFRESH_TIMEZONE=Asia/Seoul
+SCHEDULED_REFRESH_DAYS_OF_MONTH=1,6,11,16,21,26,31
+SCHEDULED_REFRESH_HOUR=9
+SCHEDULED_REFRESH_LOOKBACK_DAYS=5
+SCHEDULED_REFRESH_RUN_ON_STARTUP_CATCHUP=false
+SCHEDULED_REFRESH_MAX_CONCURRENT_JOBS=1
+```
+
+`POST /api/admin/crawl-jobs/manual-range` now accepts `pipeline_mode`,
+`include_qwen_adjudication`, `qwen_priority`, `run_postprocess`,
+`run_consolidation`, and `max_days`. Manual ranges are capped to a 30-day span;
+future `date_to` is adjusted to today, and future `date_from` is rejected.
+## Full Contextual Quality Review Artifacts
+
+전수 품질 재검증은 관리 API와 별개로 로컬 스크립트에서 실행할 수 있으며, 결과는 `fact_qwen_review_audit`에 기록된다.
+
+- product task type: `qwen_product_quality_review`
+- exclusive-right task type: `qwen_exclusive_right_quality_review`
+- plan CSV: `data/exports/qwen_quality_review_plan_*.csv`
+- report: `docs/full-contextual-qwen-quality-goal-result.md`
+
+Dashboard/export는 기존과 동일하게 `rejected`, `review`, ineligible article flag를 기본 제외 대상으로 처리하고, debug/review 포함 옵션에서만 확인한다.

@@ -18,6 +18,7 @@ from app.llm.prompts import EXCLUSIVE_RIGHT_EXTRACTOR_PROMPT, EXTRACTOR_PROMPT, 
 from app.services.extract_service import SCHEMA_VERSION, ExtractService, normalize_extraction_payload
 from app.services.exclusive_right_consolidation_service import ExclusiveRightConsolidationService
 from app.services.exclusive_right_service import ExclusiveRightService
+from app.services.article_eligibility_filter_service import ArticleEligibilityFilterService
 from app.services.llm_cost_service import LLMCostService
 from app.services.product_candidate_cluster_service import ProductCandidateClusterService
 from app.services.snippet_service import Snippet, SnippetService
@@ -70,7 +71,8 @@ class BatchLLMService:
             .order_by(FactLLMQueue.priority.desc(), FactLLMQueue.llm_queue_id)
         )
         items: list[FactLLMQueue] = []
-        for item in query.limit(max_requests * 5).all():
+        candidate_query = query if crawl_job_id is not None else query.limit(max_requests * 5)
+        for item in candidate_query.all():
             if item.provider not in {None, provider} or item.model_name not in {None, model}:
                 continue
             if self._queue_is_multi_company_article(db, item):
@@ -254,6 +256,10 @@ class BatchLLMService:
                 if not queue_item:
                     failed += 1
                     continue
+                if job.crawl_job_id is not None and not self._queue_matches_crawl_job(db, queue_item, job.crawl_job_id):
+                    self._reset_mismatched_queue_scope(db, queue_item, job.crawl_job_id)
+                    skipped += 1
+                    continue
                 if self._existing_completed_run(db, job, queue_item):
                     queue_item.status = "completed"
                     skipped += 1
@@ -411,7 +417,13 @@ class BatchLLMService:
     def _queue_is_multi_company_article(self, db: Session, queue_item: FactLLMQueue) -> bool:
         if queue_item.target_type == "article":
             article = db.get(FactArticle, queue_item.target_id)
-            return bool(article and article.multi_company_article_yn)
+            if not article:
+                return False
+            decision = ArticleEligibilityFilterService().classify_article(db, article)
+            if not decision.is_eligible:
+                ArticleEligibilityFilterService().mark_article(db, article, decision)
+                return True
+            return bool(article.multi_company_article_yn)
         if queue_item.target_type == "product_candidate_cluster":
             cluster = db.get(FactProductCandidateCluster, queue_item.target_id)
             if not cluster:
@@ -419,11 +431,13 @@ class BatchLLMService:
             article_ids = [int(item) for item in json.loads(cluster.source_article_ids_json or "[]")]
             if not article_ids:
                 return False
-            clean_count = (
-                db.query(FactArticle)
-                .filter(FactArticle.article_id.in_(article_ids), FactArticle.multi_company_article_yn == False)  # noqa: E712
-                .count()
-            )
+            clean_count = 0
+            for article in db.query(FactArticle).filter(FactArticle.article_id.in_(article_ids)).all():
+                decision = ArticleEligibilityFilterService().classify_article(db, article)
+                if decision.is_eligible and not bool(article.multi_company_article_yn):
+                    clean_count += 1
+                else:
+                    ArticleEligibilityFilterService().mark_article(db, article, decision)
             return clean_count == 0
         return False
 
@@ -464,8 +478,6 @@ class BatchLLMService:
         )
 
     def _queue_matches_crawl_job(self, db: Session, queue_item: FactLLMQueue, crawl_job_id: int) -> bool:
-        if queue_item.crawl_job_id is not None:
-            return queue_item.crawl_job_id == crawl_job_id
         if queue_item.target_type == "article":
             article = db.get(FactArticle, queue_item.target_id)
             return bool(article and article.crawl_job_id == crawl_job_id)
@@ -476,13 +488,38 @@ class BatchLLMService:
             article_ids = [int(item) for item in json.loads(cluster.source_article_ids_json or "[]")]
             if not article_ids:
                 return False
-            return (
-                db.query(FactArticle)
-                .filter(FactArticle.article_id.in_(article_ids), FactArticle.crawl_job_id == crawl_job_id)
-                .count()
-                > 0
-            )
+            crawl_job_ids = {
+                article.crawl_job_id
+                for article in db.query(FactArticle).filter(FactArticle.article_id.in_(article_ids)).all()
+                if article.crawl_job_id is not None
+            }
+            return bool(crawl_job_ids) and crawl_job_ids == {crawl_job_id}
         return False
+
+    def _reset_mismatched_queue_scope(self, db: Session, queue_item: FactLLMQueue, expected_crawl_job_id: int) -> None:
+        actual_crawl_job_id = self._actual_queue_crawl_job_id(db, queue_item)
+        queue_item.crawl_job_id = actual_crawl_job_id
+        queue_item.llm_batch_job_id = None
+        queue_item.status = "pending"
+        queue_item.last_error = f"Skipped batch import because queue target is outside crawl_job_id={expected_crawl_job_id}."
+        db.flush()
+
+    def _actual_queue_crawl_job_id(self, db: Session, queue_item: FactLLMQueue) -> int | None:
+        if queue_item.target_type == "article":
+            article = db.get(FactArticle, queue_item.target_id)
+            return article.crawl_job_id if article else queue_item.crawl_job_id
+        if queue_item.target_type == "product_candidate_cluster":
+            cluster = db.get(FactProductCandidateCluster, queue_item.target_id)
+            if not cluster:
+                return queue_item.crawl_job_id
+            article_ids = [int(item) for item in json.loads(cluster.source_article_ids_json or "[]")]
+            crawl_job_ids = {
+                article.crawl_job_id
+                for article in db.query(FactArticle).filter(FactArticle.article_id.in_(article_ids)).all()
+                if article.crawl_job_id is not None
+            }
+            return next(iter(crawl_job_ids)) if len(crawl_job_ids) == 1 else queue_item.crawl_job_id
+        return queue_item.crawl_job_id
 
     def _representative_article_id(self, db: Session, queue_item: FactLLMQueue) -> int | None:
         if queue_item.target_type == "article":

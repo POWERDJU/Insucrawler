@@ -1,4 +1,3 @@
-from app.db.models import DimProduct, FactProductTypeAssignment
 from app.schemas.dashboard import DashboardQueryRequest
 from app.services.dashboard_service import DashboardService
 from app.services.ingestion_service import IngestionService
@@ -11,6 +10,7 @@ def seed_dashboard_product(
     name="대시보드 간편 암보험",
     product_type_code="CANCER",
     secondary_product_type_code="SIMPLIFIED_IMPAIRED",
+    product_status="active",
 ):
     IngestionService().upsert_structured_product(
         db,
@@ -22,6 +22,7 @@ def seed_dashboard_product(
                 "insurance_type": "생명보험",
                 "release_year_month": release_year_month,
                 "primary_product_type_code": product_type_code,
+                "product_status": product_status,
                 "confidence_total": 0.9,
                 "needs_review": False,
             },
@@ -108,7 +109,7 @@ def dashboard_request(**overrides):
         "insurance_type": "전체",
         "company_names": [],
         "product_type_codes": [],
-        "classification_mode": "include_secondary",
+        "classification_mode": "primary_only",
         "pivot_preset": "custom",
         "custom_rows": ["company_name", "product_type_name"],
         "custom_columns": [],
@@ -134,7 +135,7 @@ def test_dashboard_options_include_master_values(db_session):
 
 def test_dashboard_query_request_defaults_to_simplified_dashboard_mode():
     request = DashboardQueryRequest()
-    assert request.classification_mode == "include_secondary"
+    assert request.classification_mode == "primary_only"
     assert request.pivot_preset == "custom"
     assert request.release_years == []
     assert request.custom_columns == []
@@ -171,7 +172,7 @@ def test_dashboard_custom_columns_empty_and_rows_fallback(db_session):
     assert result["pivot_result"]["base"] == "product"
     assert result["pivot_result"]["columns"] == []
     assert result["pivot_result"]["rows"] == ["company_name", "product_type_name"]
-    assert {row["product_type_name"] for row in result["pivot_result"]["records"]} >= {"암보험", "간편(유병자)"}
+    assert {row["product_type_name"] for row in result["pivot_result"]["records"]} == {"암보험"}
 
 
 def test_dashboard_coverage_rows_select_coverage_base(db_session):
@@ -216,11 +217,8 @@ def test_dashboard_product_type_filter_applies_without_industry_or_company(db_se
     assert [item["normalized_product_name"] for item in result["products"]] == ["연금저축 상품"]
 
 
-def test_dashboard_product_type_filter_includes_primary_even_without_assignment(db_session):
+def test_dashboard_product_type_filter_uses_primary_only_even_if_include_secondary_requested(db_session):
     seed_dashboard_product(db_session, name="배정 누락 암보험", product_type_code="CANCER")
-    product = db_session.query(DimProduct).filter(DimProduct.normalized_product_name == "배정 누락 암보험").one()
-    db_session.query(FactProductTypeAssignment).filter(FactProductTypeAssignment.product_id == product.product_id).delete()
-    db_session.commit()
 
     result = DashboardService().query(
         db_session,
@@ -264,6 +262,7 @@ def test_dashboard_release_years_filter_multiple_years(db_session):
 
 def test_dashboard_export_comparison_workbook(db_session):
     seed_dashboard_product(db_session)
+    seed_dashboard_product(db_session, name="대시보드 리뷰 암보험", product_status="review")
     workbook_file = DashboardService().export_comparison_workbook(
         db_session,
         dashboard_request(release_year="2026", company_names=[], product_type_codes=[]),
@@ -282,12 +281,24 @@ def test_dashboard_export_comparison_workbook(db_session):
     assert "검수필요" not in headers
     assert "관련 URL" not in headers
     assert "업종" not in headers
-    assert {"상품명", "고지유형", "납입기간", "상품특징 요약", "주요보장1 보장명", "판매실적1 항목"} <= set(headers)
+    assert {
+        "canonical_product_id",
+        "product_status",
+        "상품명 alias 목록",
+        "상품통합 상태",
+        "통합근거 요약",
+        "partner_company",
+        "source_article_urls",
+        "원문 상품명",
+        "원문 회사명",
+        "최초 확인월",
+        "주요보장2 최대보장금액",
+    }.isdisjoint(headers)
+    assert {"상품명", "상품특징 요약", "주요보장1 보장명", "판매실적1 항목"} <= set(headers)
+    assert {"고지유형", "납입기간", "보험기간", "확인 필요 정보", "미확인 필드"}.isdisjoint(headers)
     assert len(rows) == 1
     row = dict(zip(headers, rows[0]))
     assert row["상품명"] == "대시보드 간편 암보험"
-    assert row["고지유형"] == "간편고지"
-    assert row["납입기간"] == "20년납"
     assert row["상품특징 요약"] == "간편고지형 암보험"
     assert row["주요보장1 보장명"] == "암진단비"
     assert row["판매실적1 항목"] == "판매건수"

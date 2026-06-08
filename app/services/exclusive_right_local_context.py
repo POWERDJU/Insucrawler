@@ -49,6 +49,34 @@ GENERIC_WEAK_SUBJECTS = (
     "배타적사용권",
     "배타적 사용권",
     "배타적사용권 대상 미확인",
+    "보험특허권",
+    "보험 특허권",
+    "보험 특허",
+    "보험특허",
+    "여성 보험",
+    "여성보험",
+    "이는 건강 보험",
+    "이는 건강보험",
+    "보험 특허 상품",
+    "보험특허상품",
+    "보험 업계의 특허권",
+    "보험업계의특허권",
+    "특약 종류",
+    "특약종류",
+    "해당 특약",
+    "해당특약",
+    "특화 상품",
+    "특화상품",
+    "법률 관련 상품",
+    "법률관련상품",
+    "특약 2종",
+    "특약2종",
+    "신규특약",
+    "신규 특약",
+    "장기보험",
+    "장기 보험",
+    "미니보험",
+    "미니 보험",
 )
 WEAK_SUBJECT_KEYS = {normalize_search_key(value) for value in GENERIC_WEAK_SUBJECTS}
 
@@ -81,6 +109,15 @@ BAD_SUBJECT_FRAGMENTS = (
     "획득",
     "배타적사용권",
     "배타적 사용권",
+    "이는 건강 보험",
+    "이는 건강보험",
+    "CNB뉴스",
+    "위클리픽",
+    "도약 [2026 보험",
+    "보장 공백 메운다",
+    "메리츠화재에 따르면 해당 특약",
+    "보험 업계의 특허권",
+    "특약 종류",
 )
 BAD_TAIL_SPLIT_RE = re.compile(
     r"\s*(?:"
@@ -283,6 +320,12 @@ def validate_exclusive_subject_quality(
         if has_bad_subject_tail(candidate) or is_generic_or_weak_subject(candidate):
             return SubjectValidationResult(None, "rejected", True, "bad_subject_tail_unresolved", original)
 
+    if is_sentence_fragment_subject(candidate):
+        resolved = resolve_subject_reference(candidate, window, evidence, article_title=article_title)
+        if resolved and normalize_search_key(resolved) != normalize_search_key(candidate):
+            return SubjectValidationResult(resolved, "resolved", False, "sentence_fragment_subject_resolved", original)
+        return SubjectValidationResult(None, "rejected", True, "sentence_fragment_subject_unresolved", original)
+
     weak_reference_conflict = _weak_reference_type_conflict(candidate, f"{window} {evidence}")
     if weak_reference_conflict:
         return SubjectValidationResult(candidate, "review", True, weak_reference_conflict, original)
@@ -449,6 +492,8 @@ def is_generic_or_weak_subject(subject_name: str | None) -> bool:
     if key in WEAK_SUBJECT_KEYS:
         return True
     text = compact_spaces(subject_name)
+    if re.fullmatch(r"(?:신규\s*)?특약\s*\d*\s*종?", text):
+        return True
     if re.fullmatch(r"[가-힣A-Za-z0-9·\s]{1,20}(?:손해보험|생명보험|화재|생명|손보|생보)", text):
         return True
     if len(key) <= 3 and any(suffix in text for suffix in SUBJECT_SUFFIXES):
@@ -465,6 +510,39 @@ def has_bad_subject_tail(subject_name: str | None) -> bool:
     if not text:
         return False
     return any(fragment in text for fragment in BAD_SUBJECT_FRAGMENTS)
+
+
+def is_sentence_fragment_subject(subject_name: str | None) -> bool:
+    text = compact_spaces(subject_name)
+    if not text:
+        return True
+    key = normalize_search_key(text)
+    if key in WEAK_SUBJECT_KEYS:
+        return True
+    fragment_markers = (
+        "뉴스",
+        "위클리픽",
+        "[",
+        "]",
+        "따르면",
+        "메운다",
+        "도약",
+        "보험 업계",
+        "보험업계",
+        "특허권",
+        "특약 종류",
+        "해당 특약",
+    )
+    if any(marker in text for marker in fragment_markers):
+        return True
+    if text.startswith(("이는 ", "해당 ", "이번 ", "이런 ", "보장 공백", "CNB뉴스")):
+        return True
+    compact = re.sub(r"\s+", "", text)
+    if any(compact.startswith(prefix) and "보험" in compact for prefix in ("이는", "해당", "이번", "이런")):
+        return True
+    if len(key) > 24 and any(token in text for token in (" 보험", " 특약", " 상품", " 따르면")):
+        return True
+    return False
 
 
 def clean_exclusive_subject_candidate(subject_name: str | None) -> str:

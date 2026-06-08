@@ -129,6 +129,14 @@ and `보험` may be ignored for identity comparison. This lets
 `시그니처 여성 건강보험 4.0` and `시그니처 여성보험 4.0` merge into one canonical
 product, while `3.0` and `4.0` remain separate.
 
+Release-month cleanup follows the same version guard. Explicit launch text such
+as `2026년 1월 출시`, `올해 1월 출시`, or `지난해 11월 출시` is parsed before
+falling back to earliest related article month, and lower-priority inferred
+months do not overwrite `explicit_in_article`, `manual`, or
+`external_grounded_source` values. Existing rows can be reviewed with
+`scripts/rebuild_product_release_months.py --dry-run` and applied with
+`--apply`.
+
 Birth/pregnancy benefit components use their own family token. Variants such as
 `출산하면 보험료 지원 특약`, `출산지원금 보장 특약`, and `출산 혜택 보험료 유예
 특약` can merge together when company and release window are compatible. The
@@ -233,6 +241,7 @@ product-detail rendering:
 
 ```bash
 python scripts/run_product_version_birth_mobile_goal_check.py
+python scripts/run_signature_release_birth_coverage_goal_check.py
 ```
 
 It does not crawl, reparse, or call Gemini/Qwen. The report is written to
@@ -378,3 +387,13 @@ python scripts/rebuild_product_company_attribution.py
 ```
 
 Consolidation should not merge products across different resolved insurers, and short-alias-only company matches should remain review items.
+## Major Coverage Dedupe Layer
+
+Product consolidation and major coverage dedupe are separate layers. Product
+dedupe decides whether product rows represent the same product. Major coverage
+dedupe only combines duplicate-looking coverage rows for one product at
+API/display/export time and never deletes raw coverage rows.
+
+Coverage dedupe is deterministic by default. Optional list-level LLM review is
+allowed only for compact coverage lists and is off unless
+`MAJOR_COVERAGE_LLM_DEDUPE_ENABLED=true`.

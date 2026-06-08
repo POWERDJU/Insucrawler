@@ -19,7 +19,6 @@ def search_products(
     product_type_code: str | None = None,
     release_year_month_from: str | None = None,
     release_year_month_to: str | None = None,
-    include_secondary_types: bool = False,
     min_confidence: float | None = None,
     include_review: bool = False,
     company_role: str | None = None,
@@ -39,7 +38,7 @@ def search_products(
         product_type_code=product_type_code,
         release_year_month_from=release_year_month_from,
         release_year_month_to=release_year_month_to,
-        include_secondary_types=include_secondary_types,
+        include_secondary_types=False,
         min_confidence=min_confidence,
         include_review=include_review,
         company_role=company_role,
@@ -53,8 +52,8 @@ def search_products(
 
 
 @router.get("/{product_id}")
-def get_product(product_id: int, db: Session = Depends(get_db)) -> dict:
-    detail = ProductService().get_detail(db, product_id)
+def get_product(product_id: int, debug: bool = False, db: Session = Depends(get_db)) -> dict:
+    detail = ProductService().get_detail(db, product_id, debug=debug)
     if not detail:
         raise HTTPException(status_code=404, detail="Product not found")
     return detail

@@ -30,6 +30,7 @@ from app.services.extract_service import ExtractService
 from app.services.batch_llm_service import BatchLLMService
 from app.services.exclusive_right_consolidation_service import ExclusiveRightConsolidationService
 from app.services.exclusive_right_service import ExclusiveRightService
+from app.services.article_eligibility_filter_service import ArticleEligibilityFilterService
 from app.services.multi_company_article_filter_service import MultiCompanyArticleFilterService
 from app.services.product_consolidation_service import ProductConsolidationService
 from app.services.screening_service import ScreeningService
@@ -97,6 +98,11 @@ class CrawlJobService:
         exclusive_right_limit: int | None = None,
         include_reinsurers: bool = False,
         include_foreign_branches: bool = False,
+        pipeline_mode: str = "crawl_only",
+        include_qwen_adjudication: bool = False,
+        qwen_priority: bool = True,
+        run_postprocess: bool = True,
+        run_consolidation: bool = True,
         requested_by: str | None = None,
         requested_from: str | None = None,
     ) -> FactCrawlJob:
@@ -116,6 +122,11 @@ class CrawlJobService:
             exclusive_right_limit=exclusive_right_limit,
             include_reinsurers=include_reinsurers,
             include_foreign_branches=include_foreign_branches,
+            pipeline_mode=pipeline_mode,
+            include_qwen_adjudication=include_qwen_adjudication,
+            qwen_priority=qwen_priority,
+            run_postprocess=run_postprocess,
+            run_consolidation=run_consolidation,
             requested_by=requested_by,
             requested_from=requested_from,
             split_by_month=True,
@@ -135,6 +146,11 @@ class CrawlJobService:
         exclusive_right_limit: int | None = None,
         include_reinsurers: bool = False,
         include_foreign_branches: bool = False,
+        pipeline_mode: str = "crawl_only",
+        include_qwen_adjudication: bool = False,
+        qwen_priority: bool = True,
+        run_postprocess: bool = True,
+        run_consolidation: bool = True,
         requested_by: str | None = None,
         requested_from: str | None = None,
     ) -> FactCrawlJob:
@@ -154,6 +170,11 @@ class CrawlJobService:
             exclusive_right_limit=exclusive_right_limit,
             include_reinsurers=include_reinsurers,
             include_foreign_branches=include_foreign_branches,
+            pipeline_mode=pipeline_mode,
+            include_qwen_adjudication=include_qwen_adjudication,
+            qwen_priority=qwen_priority,
+            run_postprocess=run_postprocess,
+            run_consolidation=run_consolidation,
             requested_by=requested_by,
             requested_from=requested_from,
             split_by_month=True,
@@ -174,6 +195,11 @@ class CrawlJobService:
         exclusive_right_limit: int | None = None,
         include_reinsurers: bool = False,
         include_foreign_branches: bool = False,
+        pipeline_mode: str = "crawl_only",
+        include_qwen_adjudication: bool = False,
+        qwen_priority: bool = True,
+        run_postprocess: bool = True,
+        run_consolidation: bool = True,
         requested_by: str | None = None,
         requested_from: str | None = None,
     ) -> FactCrawlJob:
@@ -195,6 +221,11 @@ class CrawlJobService:
             exclusive_right_limit=exclusive_right_limit,
             include_reinsurers=include_reinsurers,
             include_foreign_branches=include_foreign_branches,
+            pipeline_mode=pipeline_mode,
+            include_qwen_adjudication=include_qwen_adjudication,
+            qwen_priority=qwen_priority,
+            run_postprocess=run_postprocess,
+            run_consolidation=run_consolidation,
             requested_by=requested_by,
             requested_from=requested_from,
             split_by_month=False,
@@ -216,6 +247,11 @@ class CrawlJobService:
         exclusive_right_limit: int | None = None,
         include_reinsurers: bool = False,
         include_foreign_branches: bool = False,
+        pipeline_mode: str = "crawl_only",
+        include_qwen_adjudication: bool = False,
+        qwen_priority: bool = True,
+        run_postprocess: bool = True,
+        run_consolidation: bool = True,
         requested_by: str | None = None,
         requested_from: str | None = None,
     ) -> FactCrawlJob:
@@ -235,6 +271,11 @@ class CrawlJobService:
             exclusive_right_limit=exclusive_right_limit,
             include_reinsurers=include_reinsurers,
             include_foreign_branches=include_foreign_branches,
+            pipeline_mode=pipeline_mode,
+            include_qwen_adjudication=include_qwen_adjudication,
+            qwen_priority=qwen_priority,
+            run_postprocess=run_postprocess,
+            run_consolidation=run_consolidation,
             requested_by=requested_by,
             requested_from=requested_from,
             split_by_month=True,
@@ -259,6 +300,13 @@ class CrawlJobService:
         include_article_body_fetch: bool = False,
         include_reinsurers: bool = False,
         include_foreign_branches: bool = False,
+        pipeline_mode: str = "crawl_only",
+        include_qwen_adjudication: bool = False,
+        qwen_priority: bool = True,
+        run_postprocess: bool = True,
+        run_consolidation: bool = True,
+        scheduled_run_at: datetime | None = None,
+        scheduled_timezone: str | None = None,
         requested_by: str | None = None,
         requested_from: str | None = None,
         split_by_month: bool = True,
@@ -289,6 +337,16 @@ class CrawlJobService:
             exclusive_right_auto_consolidate=exclusive_right_auto_consolidate,
             exclusive_right_limit=exclusive_right_limit,
             exclusive_right_pipeline_status="not_requested" if not include_exclusive_right_pipeline else "pending",
+            pipeline_mode=pipeline_mode,
+            include_qwen_adjudication=include_qwen_adjudication,
+            qwen_priority=qwen_priority,
+            run_postprocess=run_postprocess,
+            run_consolidation=run_consolidation,
+            scheduled_run_at=scheduled_run_at,
+            scheduled_timezone=scheduled_timezone,
+            postprocess_status="pending" if run_postprocess and pipeline_mode != "crawl_only" else "not_requested",
+            consolidation_status="pending" if run_consolidation and pipeline_mode != "crawl_only" else "not_requested",
+            qwen_review_status="pending" if include_qwen_adjudication else "not_requested",
         )
         db.add(job)
         db.flush()
@@ -652,15 +710,22 @@ class CrawlJobService:
         self._log_event(db, job.crawl_job_id, task.crawl_task_id, "article_saved", item.title, {"article_id": article.article_id})
         screening = ScreeningService().screen_article(db, article)
         SnippetService().extract_for_article(db, article)
-        multi_company = MultiCompanyArticleFilterService().mark_article(db, article)
-        if multi_company.is_multi_company:
+        eligibility = ArticleEligibilityFilterService().classify_article(db, article)
+        if not eligibility.is_eligible:
+            ArticleEligibilityFilterService().mark_article(db, article, eligibility)
             self._log_event(
                 db,
                 job.crawl_job_id,
                 task.crawl_task_id,
-                "article_excluded_multi_company",
+                "article_excluded_eligibility",
                 item.title,
-                {"article_id": article.article_id, "companies": multi_company.company_names},
+                {
+                    "article_id": article.article_id,
+                    "reason": eligibility.exclusion_reason,
+                    "insurers": eligibility.detected_insurer_companies,
+                    "non_insurance_financial_institutions": eligibility.detected_non_insurance_financial_institutions,
+                    "non_insurance_products": eligibility.detected_non_insurance_products,
+                },
             )
             return True
         if not screening.is_candidate:

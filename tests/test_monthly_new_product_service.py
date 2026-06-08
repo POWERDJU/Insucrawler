@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.db.models import DimProduct, FactArticle, FactProductArticle, FactProductMajorCoverage, FactProductNarrativeInsight, FactProductTypeAssignment
+from app.db.models import DimProduct, FactArticle, FactProductArticle, FactProductMajorCoverage, FactProductNarrativeInsight
 from app.db.repository import link_product_article
 from app.services.ingestion_service import IngestionService
 from app.services.monthly_new_product_service import MonthlyNewProductService
@@ -92,6 +92,39 @@ def test_monthly_new_products_returns_current_month_items(db_session):
     assert result["items"][0]["article_url"] == article.original_url
 
 
+def test_monthly_new_products_default_uses_current_and_previous_month(db_session):
+    june_product, _ = seed_monthly_product(
+        db_session,
+        name="월간 테스트 건강보험",
+        company_name="삼성생명",
+        insurance_type="생명보험",
+        release_year_month="2026-06",
+        article_url="https://example.com/monthly-june",
+    )
+    may_product, _ = seed_monthly_product(
+        db_session,
+        name="월간 테스트 건강보험",
+        company_name="삼성화재",
+        insurance_type="손해보험",
+        release_year_month="2026-05",
+        article_url="https://example.com/monthly-may",
+    )
+    seed_monthly_product(
+        db_session,
+        name="월간 테스트 건강보험",
+        company_name="한화손해보험",
+        insurance_type="손해보험",
+        release_year_month="2026-04",
+        article_url="https://example.com/monthly-april",
+    )
+
+    result = MonthlyNewProductService().get_monthly_new_products(db_session, fallback_latest=False)
+
+    assert result["months"] == ["2026-06", "2026-05"]
+    ids = {item["product_id"] for item in result["items"]}
+    assert {june_product.product_id, may_product.product_id} <= ids
+
+
 def test_monthly_new_products_fallback_latest(db_session):
     seed_monthly_product(db_session, release_year_month="2026-04")
 
@@ -177,7 +210,6 @@ def test_monthly_new_products_summary_fallback_order(db_session):
     db_session.query(FactProductArticle).delete()
     db_session.query(FactProductMajorCoverage).delete()
     db_session.query(FactProductNarrativeInsight).delete()
-    db_session.query(FactProductTypeAssignment).delete()
     db_session.query(DimProduct).delete()
     db_session.commit()
     seed_monthly_product(

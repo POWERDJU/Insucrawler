@@ -48,7 +48,7 @@ def test_primary_only_counts_product_once(db_session):
     assert result["records"] == [{"product_type_code": "CANCER", "product_count": 1}]
 
 
-def test_include_secondary_uses_distinct_product_id(db_session):
+def test_include_secondary_mode_is_treated_as_primary_only(db_session):
     seed_products(db_session)
     result = PivotService().run_pivot(
         db_session,
@@ -62,7 +62,7 @@ def test_include_secondary_uses_distinct_product_id(db_session):
     )
     counts = {row["product_type_code"]: row["product_count"] for row in result["records"]}
     assert counts["CANCER"] == 1
-    assert counts["SIMPLIFIED_IMPAIRED"] == 1
+    assert "SIMPLIFIED_IMPAIRED" not in counts
 
 
 def test_columns_empty_with_company_and_product_type_rows(db_session):
@@ -84,7 +84,7 @@ def test_columns_empty_with_company_and_product_type_rows(db_session):
     assert result["columns"] == []
     counts = {(row["company_name"], row["product_type_name"]): row["product_count"] for row in result["records"]}
     assert counts[("삼성화재", "암보험")] == 1
-    assert counts[("삼성화재", "간편(유병자)")] == 1
+    assert ("삼성화재", "간편(유병자)") not in counts
 
 
 def test_coverage_grain_distinct_product_count(db_session):

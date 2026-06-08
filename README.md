@@ -67,7 +67,7 @@ uvicorn app.api.main:app --reload
 
 출시년도, 보험회사, 보종군은 체크박스형 다중 선택을 지원하며 각 영역의 `전체선택`은 해당 조건을 적용하지 않는다는 뜻입니다. 업종이 `생명보험`이면 보험회사 `전체선택`은 생명보험사 전체, `손해보험`이면 손해보험사 전체를 의미합니다. 보종군 `전체선택`은 상품군 필터 없이 전체 상품군을 조회합니다. 회사 표시 범위는 합병/소멸/가교회사와 신규/소액단기보험사를 기본 포함하고, 사용자는 `재보험/외국지점 포함`만 선택할 수 있습니다.
 
-조회 결과는 상품명, 보험회사, 출시년월, 대표 보종군을 중심으로 비교표 형태로 표시합니다. `엑셀 다운로드` 버튼을 누르면 현재 필터 조건 그대로 `insurance_product_comparison.xlsx`가 생성되며, 상품별 기본정보, 가입연령, 고지유형, 납입기간, 보험기간, 요약, 주요보장, 판매실적, 관련기사 제목을 상품 1행 기준의 가로형 비교표로 내려줍니다. 보조 보종군, 근거/설명, confidence, 검수필요, 관련 URL은 다운로드 파일에 포함하지 않습니다. 상품명을 클릭하면 하단 전체 폭 상품상세 패널에 주요보장 리스트, 판매실적, 관련기사가 표시됩니다.
+조회 결과는 상품명, 보험회사, 출시년월, 대표 보종군을 중심으로 비교표 형태로 표시합니다. `엑셀 다운로드` 버튼을 누르면 현재 필터 조건 그대로 `insurance_product_comparison.xlsx`가 생성되며, 상품별 기본정보, 가입연령, 고지유형, 납입기간, 보험기간, 요약, 주요보장, 판매실적, 관련기사 제목을 상품 1행 기준의 가로형 비교표로 내려줍니다. 보조 보종군은 더 이상 저장/조회하지 않으며, 보종군 필터도 `dim_product.primary_product_type_code` 기준으로만 적용합니다. 근거/설명, confidence, 검수필요, 관련 URL은 다운로드 파일에 포함하지 않습니다. 상품명을 클릭하면 하단 전체 폭 상품상세 패널에 주요보장 리스트, 판매실적, 관련기사가 표시됩니다.
 
 ## 2024~2026 보험회사 마스터
 
@@ -176,10 +176,12 @@ cron 예:
 python scripts/backfill_product_core_keys.py --apply
 ```
 
-출시년월이 기사에 명시되지 않은 상품은 관련 기사 중 가장 오래된 작성월을 `release_year_month`로 보정합니다. 이때 기준값은 `earliest_related_article_month`이며, 명시 출시월(`explicit_in_article`), 수동값(`manual`), 외부 근거값(`external_grounded_source`)은 덮어쓰지 않습니다.
+출시년월은 기사 제목/요약의 명시 표현을 먼저 사용합니다. 예를 들어 `2026년 1월 출시`, `올해 1월 출시`, `지난해 11월 출시`처럼 상품/버전과 직접 연결된 표현은 `explicit_in_article`로 저장하며, 이 값은 관련기사 최초월보다 우선합니다. 출시년월이 기사에 명시되지 않은 상품은 관련 기사 중 가장 오래된 작성월을 `release_year_month`로 보정합니다. 이때 기준값은 `earliest_related_article_month`이며, 명시 출시월(`explicit_in_article`), 수동값(`manual`), 외부 근거값(`external_grounded_source`)은 덮어쓰지 않습니다.
 
 ```powershell
 python scripts/backfill_release_months.py
+python scripts/rebuild_product_release_months.py --dry-run
+python scripts/rebuild_product_release_months.py --apply
 ```
 
 회사명은 회사 마스터의 표준명 또는 alias로만 확정합니다. `경남농협`, 지역본부, 지점, 대리점, GA 지점명처럼 보험회사 마스터에 없는 조직명은 보험회사로 저장하지 않고 검수 대상으로 둡니다. 단, 원문에 `NH농협손해보험`, `농협손보`, `NH농협생명`, `농협생명`처럼 등록된 alias가 명시되어 있으면 해당 보험회사로 연결합니다.
@@ -331,7 +333,11 @@ The response includes low/skip LLM violations, article-level same-product LLM vi
 
 상품 출시월이 명시되지 않은 경우에는 관련기사 중 가장 이른 월을 무조건 쓰지 않고, 상품명/버전과 직접 연결된 출시 기사 또는 신상품 기사월을 우선한다. 판매실적, 배타적사용권, 보장금 지급 등 후속 기사월은 직접 출시 기사보다 뒤로 밀린다.
 
-상품 상세의 주요보장 리스트는 API 응답 단계에서 보장명, 보장영역, 급부유형, 금액, 지급조건 기준으로 dedupe한다. PC 표와 모바일 아코디언 모두 같은 dedupe 함수를 사용한다.
+상품 상세의 주요보장 리스트는 API 응답 단계에서 보장명, 보장영역, 급부유형, 금액, 지급조건 기준으로 dedupe한다. 출산지원, 임신지원, 법률비용, 보험료 환급처럼 표현이 다른 동일 보장 family도 사용자 화면에서는 한 항목으로 정리한다. PC 표와 모바일 아코디언 모두 같은 dedupe 함수를 사용하며, DB 원천 보장 row는 삭제하지 않는다.
+
+```powershell
+python scripts/run_signature_release_birth_coverage_goal_check.py
+```
 
 회귀 확인:
 
@@ -589,3 +595,124 @@ python scripts/run_product_attribution_multicompany_marketing_goal_check.py
 ```
 
 The goal check writes `docs/product-attribution-multicompany-marketing-goal-result.md` and verifies the guard without realtime LLM calls.
+
+## Product Type and Financial-Roundup Quality Guard
+
+Default dashboard, search, monthly board, and Excel views exclude products whose representative product type is incompatible with the insurer industry. Examples include a nonlife insurer row classified as whole-life/death insurance or variable/UL, and a life insurer row classified as auto, pet, travel/leisure, or property expense insurance. These rows are not physically deleted; they are marked for review/exclusion so administrators can audit the raw source.
+
+The article eligibility guard also blocks mixed financial-institution roundup articles before queue creation, batch JSONL creation, and batch import. If an article combines insurers with banks, securities firms, card companies, or non-insurance financial products such as deposits, loans, funds, ETFs, or index-linked deposits, only that source article is excluded from product and exclusive-use-right evidence. The same guard also covers bank/card-primary articles where insurance coverage or service is mentioned only as a side benefit rather than as the article's product-launch subject. Raw articles remain stored for audit, and a canonical product/event remains visible only when it has at least one clean source article.
+
+Product names are cleaned with a deterministic Korean discourse-prefix rule before save. Leading sentence connectors such as `한편`, `또한`, `아울러`, `다만`, `그러나`, and `물론` are stripped only when they appear at the beginning of the candidate name. For example, `한편 시그니처 여성건강보험` is saved as `시그니처 여성건강보험`, while the original raw mention remains available as an alias. If the remaining name is generic, such as `건강보험` or `간편건강보험`, it is not created as an active product.
+
+The monthly new-product board uses the server current month and previous month by default. Passing an explicit `year_month=YYYY-MM` keeps the old single-month behavior. The board uses only saved DB summaries and never calls an LLM while rendering.
+
+Operational diagnostics:
+
+```powershell
+python scripts/cleanup_product_name_prefixes.py --dry-run
+python scripts/audit_article_eligibility.py --date-from 2026-01-01 --date-to 2026-05-31 --dry-run
+python scripts/cleanup_invalid_industry_product_types.py --dry-run
+python scripts/cleanup_ineligible_article_product_extractions.py --dry-run
+python scripts/cleanup_ineligible_article_exclusive_rights.py --dry-run
+python scripts/run_product_name_and_article_eligibility_goal_check.py
+python scripts/run_data_quality_cleanup_goal_check.py
+```
+
+Use `--apply` only after reviewing the generated CSV files. These scripts are deterministic and do not call realtime LLM providers.
+
+Regression cases are documented in `docs/product-name-prefix-and-financial-roundup-diagnosis.md`: product 609-style leading discourse prefix, product 632-style bank/insurer roundup source, and product 625-style `KOSPI200 지수연동예금` non-insurance financial product.
+## Major Coverage Dedupe
+
+Product detail, dashboard rendering, and product comparison Excel use a
+deterministic major-coverage dedupe layer. Raw rows in
+`fact_product_major_coverage` are not deleted; duplicate-looking coverages are
+combined only at the API/display/export layer.
+
+Run the audit and goal check with:
+
+```powershell
+python scripts/audit_major_coverage_duplicates.py --dry-run
+python scripts/run_major_coverage_dedupe_goal_check.py
+```
+
+The default behavior does not call an LLM. Optional compact list-level LLM
+review is guarded by `MAJOR_COVERAGE_LLM_DEDUPE_ENABLED=false`.
+
+## Contextual Extraction Quality Recovery
+
+The product/exclusive-right extraction pipeline now has additional guards based
+on the 2026 export error workbooks:
+
+- Article eligibility blocks multi-company, multi-financial, non-insurance
+  service/product, subscription, campaign/ad-only, entertainment-model, and
+  sports-broadcast articles before queue/import writes.
+- Product names are stripped of leading Korean discourse prefixes and rejected
+  when the remaining name is a generic insurance phrase or sentence fragment.
+- Reinsurers and foreign branches are review-only for product and
+  exclusive-right ownership.
+- Sales metrics require product-level evidence near the product name or alias.
+- Compact-context final adjudication services are provider-injectable. By
+  default they do not call live LLMs; set
+  `ENABLE_FINAL_ADJUDICATION_LLM=true` and
+  `FINAL_ADJUDICATION_PROVIDER=qwen` to use Qwen for risky final product and
+  exclusive-right adjudication. Product final adjudication checks and may
+  correct the product name, release year-month, company attribution,
+  product-combination/partner structure, and article suitability before active
+  save. Dashboard and Excel export do not call LLM providers.
+
+```powershell
+python scripts/diagnose_extraction_quality_errors.py --products "insurance_product_comparison (26).xlsx" --exclusive-rights "exclusive_rights (5).xlsx" --output docs/extraction-quality-error-diagnosis.md
+python scripts/run_contextual_extraction_quality_goal_check.py
+```
+
+## Full Review, Qwen Adjudication, and Scheduled Refresh
+
+The 2025-01-01 through 2026-05-31 quality-review workflow is available through
+admin API and CLI goal checks. Collection still uses the news collector only;
+Gemini batch is used for extraction, and live Qwen is used only by the final
+adjudication step when explicitly enabled.
+
+Key admin APIs:
+
+- `POST /api/admin/full-review/qwen`
+- `GET /api/admin/full-review/{review_job_id}`
+- `POST /api/admin/full-review/{review_job_id}/apply`
+- `POST /api/admin/full-review/{review_job_id}/cancel`
+- `GET /api/admin/scheduled-refresh/status`
+- `POST /api/admin/crawl-jobs/manual-range`
+
+Manual range updates are limited to a 30-day span and default to
+`crawl_parse_postprocess_qwen`: crawl, Gemini batch queueing, rule
+postprocessing/consolidation, then Qwen final adjudication. Future `date_to`
+values are adjusted to today; future `date_from` is rejected.
+
+Scheduled refresh is opt-in and runs only while the server process is alive:
+
+```env
+SCHEDULED_REFRESH_ENABLED=true
+SCHEDULED_REFRESH_TIMEZONE=Asia/Seoul
+SCHEDULED_REFRESH_DAYS_OF_MONTH=1,6,11,16,21,26,31
+SCHEDULED_REFRESH_HOUR=9
+SCHEDULED_REFRESH_LOOKBACK_DAYS=5
+SCHEDULED_REFRESH_RUN_ON_STARTUP_CATCHUP=false
+SCHEDULED_REFRESH_MAX_CONCURRENT_JOBS=1
+```
+
+Operational commands:
+
+```powershell
+py -3 scripts/run_full_qwen_review_goal_check.py --date-from 2025-01-01 --date-to 2026-05-31
+py -3 scripts/run_scheduled_refresh_goal_check.py --pipeline-step
+py -3 scripts/run_manual_update_goal_check.py --date-from 2026-06-01 --date-to 2026-06-08 --run-now
+```
+
+Reports are written under `docs/` and CSV artifacts under `data/exports/`.
+## Full Contextual Qwen Quality Review
+
+전수 품질 재검증은 기존 `qwen_final_review` 이력과 분리된 `qwen_product_quality_review` / `qwen_exclusive_right_quality_review` audit task type을 사용한다. 이미 한 번 최종판정을 거친 행도 개선된 rule hard gate와 Qwen compact-context adjudication으로 다시 검증할 수 있다.
+
+```powershell
+py -3 scripts\run_qwen_quality_review_for_current_data.py --apply --target all --date-from 2025-01-01 --date-to 2026-05-31
+```
+
+명백한 비보험/금융권 라운드업/다수 보험사 경쟁 기사와 문장조각 상품명·배타적사용권 주제명은 Qwen accept보다 rule hard gate가 우선하며, 라이브 Qwen은 full article body가 아닌 제목, URL, 발행일, snippet/local window, 현재 필드만 사용한다.

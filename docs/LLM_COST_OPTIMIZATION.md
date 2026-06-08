@@ -404,3 +404,96 @@ Multi-company article filtering is deterministic and does not call Gemini/Qwen.
 - Flagged articles do not create new realtime or batch LLM queues.
 - If a flagged article is already in a submitted batch, import skips only that output.
 - Source-level cleanup never calls LLM and never physically deletes canonical products/events.
+
+## Article Eligibility Guard Before LLM
+
+Before an article can create realtime extraction work, an extract queue, a batch JSONL request, or an imported batch result, the runtime path checks deterministic article eligibility. This includes insurer multi-company articles, mixed financial-institution roundup articles that combine insurer news with banks, securities firms, card companies, or non-insurance financial products such as deposits, loans, funds, ETFs, and index-linked deposits, and bank/card-primary articles where insurance coverage/service is only an ancillary benefit.
+
+Ineligible articles are marked on `fact_article` with an exclusion reason such as `multi_financial_institution_roundup`. The raw article is preserved, but product/exclusive-right evidence from that source is excluded from default query and export paths. This prevents spending LLM calls on articles that would later be thrown away and keeps false products such as bank deposits from being attributed to an insurer.
+
+The same guard is used by:
+
+- `ExtractService.extract_article`
+- `ExtractService.enqueue_article_extraction`
+- product candidate cluster creation
+- `BatchLLMService` JSONL creation and import
+- exclusive-right enqueue/save paths
+- crawl-job post-save screening/snippet flow
+
+This policy is deterministic and does not call Gemini/Qwen.
+
+## Product Name Prefix Cleaner
+
+Product-name cleanup is also deterministic and runs before product save. It strips only leading Korean discourse connectors such as `한편`, `또한`, `아울러`, `다만`, `그러나`, and `물론`. The uploaded product export is treated as diagnostic fixture data, not as a generated prefix dictionary. If the cleaned result is generic or weak, no active product is created.
+
+Because this cleaner runs before queue/import persistence and during offline cleanup scripts, it adds no LLM calls and does not affect dashboard or Excel render-time cost.
+
+## Contextual Final Adjudication Cost Boundary
+
+Final adjudication is a compact-context path, not per-article unlimited
+re-extraction. Inputs are representative title/date/url, snippets, and local
+windows around the product or exclusive-right subject. The service accepts a
+provider implementation for batch/cached production use, while tests and the
+goal runner use mocks.
+
+Live final adjudication is disabled by default. To use Qwen for this final
+step, set `ENABLE_FINAL_ADJUDICATION_LLM=true` and
+`FINAL_ADJUDICATION_PROVIDER=qwen`; `QWEN_FINAL_ADJUDICATION_MODEL` or
+`FINAL_ADJUDICATION_MODEL` can override the model. The product final
+adjudicator may correct the product name, release year-month, company
+attribution, product-combination/partner fields, and article suitability, but
+accepted or reassigned output still passes deterministic validation before it
+is saved as active data.
+
+Cost rules:
+
+- article-level same-product LLM calls remain `0` in the goal runner
+- dashboard render, search, and Excel export call `0` LLM providers
+- any LLM `accept` or `reassign_company` decision must still pass deterministic
+  product-name, company, article-eligibility, sales, and exclusive-subject
+  validators
+- live smoke is disabled unless
+  `ENABLE_LIVE_EXTRACTION_QUALITY_LLM_SMOKE=true`
+
+## Scheduled Refresh and Full Review Cost Boundary
+
+Scheduled refresh and manual date-range updates keep collection, extraction, and
+final adjudication as separate cost centers.
+
+- Naver crawl is handled only by the crawler/fetcher path; LLM providers do not
+  collect news.
+- Product and exclusive-right extraction are submitted through Gemini batch with
+  `gemini-2.5-flash-lite`, one active batch at a time and `100` requests per
+  submission.
+- Provider-completed Gemini batches are imported idempotently with realtime
+  final-adjudication LLM disabled.
+- Product/exclusive postprocessing and consolidation are rule-only by default.
+- Qwen is called only by the opt-in final-adjudication chunk after rule review,
+  or by a manual/admin full-review run with Qwen enabled.
+- Scheduled refresh uses the configured 09:00 Asia/Seoul date slots and does not
+  run dashboard, search, or Excel export LLM calls.
+
+The guarded Qwen task types are:
+
+- `qwen_product_final_review`
+- `qwen_exclusive_right_final_review`
+- `qwen_article_eligibility_review`
+- `qwen_sales_metric_review`
+- `qwen_coverage_dedupe_review`
+
+Operational checks:
+
+```powershell
+py -3 scripts/run_scheduled_refresh_goal_check.py
+py -3 scripts/run_manual_update_goal_check.py --date-from 2026-06-01 --date-to 2026-06-05
+py -3 scripts/run_full_qwen_review_goal_check.py --date-from 2025-01-01 --date-to 2026-05-31
+```
+## Exhaustive Qwen Quality Review Cost Guard
+
+전수 품질 재검증은 Qwen을 호출할 수 있지만 full article body를 보내지 않는다. `QwenQualityReviewService`는 제목, URL, 발행일, snippet/local product 또는 exclusive window, 현재 DB 필드만 payload에 포함한다. 명백한 비보험 금융상품, 금융권 라운드업, 다수 보험사 시장/경쟁 기사, 문장조각 이름은 rule hard gate에서 먼저 제외하므로 불필요한 live LLM 호출을 줄인다.
+
+실행 스크립트:
+
+```powershell
+py -3 scripts\run_qwen_quality_review_for_current_data.py --apply --target all --date-from 2025-01-01 --date-to 2026-05-31
+```

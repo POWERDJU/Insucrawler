@@ -120,27 +120,7 @@ def reconcile_extraction(
             if product.confidence.product_type < rule.primary.confidence:
                 product.confidence.product_type = rule.primary.confidence
 
-        _merge_rule_secondaries(product, rule)
-
     return extraction, corrections
-
-
-def _merge_rule_secondaries(product, rule) -> None:
-    primary_code = product.product_type_classification.primary_product_type.code
-    existing_codes = {item.code for item in product.product_type_classification.secondary_product_types}
-    for secondary in rule.secondary:
-        if secondary.code == primary_code or secondary.code in existing_codes:
-            continue
-        product.product_type_classification.secondary_product_types.append(
-            ProductTypeValue(
-                code=secondary.code,
-                name_ko=secondary.name_ko,
-                basis=secondary.basis,
-                evidence_text=secondary.evidence_text,
-                confidence=secondary.confidence,
-            )
-        )
-        existing_codes.add(secondary.code)
 
 
 def _verifier_product_name_suggestions(verification: VerificationResult | None) -> dict[int, dict[str, Any]]:

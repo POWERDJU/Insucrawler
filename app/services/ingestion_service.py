@@ -29,17 +29,6 @@ class IngestionService:
                         "needs_human_review": classified.needs_review,
                     }
                 )
-                for secondary in classified.secondary:
-                    assignments.append(
-                        {
-                            "product_type_code": secondary.code,
-                            "assignment_role": "secondary",
-                            "classification_basis": secondary.basis,
-                            "evidence_text": secondary.evidence_text,
-                            "confidence": secondary.confidence,
-                            "needs_human_review": False,
-                        }
-                    )
         product = repository.upsert_product(db, product_data, allow_unknown_company=False)
         if product is None:
             raise ValueError("Unknown insurer company; product was not saved")

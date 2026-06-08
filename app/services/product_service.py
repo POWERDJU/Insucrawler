@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
-
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -19,14 +17,14 @@ from app.db.models import (
     FactProductObservation,
     FactProductPartner,
     FactProductStructuredFeature,
-    FactProductTypeAssignment,
     FactSalesMetricStructured,
 )
 from app.utils.release_display import display_release_year_month
+from app.services.coverage_dedupe_service import dedupe_major_coverages
 
 
 class ProductService:
-    def get_detail(self, db: Session, product_id: int) -> dict | None:
+    def get_detail(self, db: Session, product_id: int, *, debug: bool = False) -> dict | None:
         product = db.get(DimProduct, product_id)
         if not product:
             return None
@@ -34,12 +32,14 @@ class ProductService:
         type_rows = db.execute(
             text(
                 """
-                SELECT a.assignment_id, a.product_type_code, pt.product_type_name_ko, a.assignment_role,
-                       a.classification_basis, a.evidence_text, a.confidence, a.needs_human_review
-                FROM fact_product_type_assignment a
-                LEFT JOIN dim_product_type pt ON pt.product_type_code = a.product_type_code
-                WHERE a.product_id = :product_id
-                ORDER BY CASE a.assignment_role WHEN 'primary' THEN 0 WHEN 'manual' THEN 1 WHEN 'secondary' THEN 2 ELSE 3 END
+                SELECT NULL AS assignment_id, p.primary_product_type_code AS product_type_code,
+                       pt.product_type_name_ko, 'primary' AS assignment_role,
+                       'dim_product.primary_product_type_code' AS classification_basis,
+                       NULL AS evidence_text, p.confidence_total AS confidence,
+                       p.needs_review AS needs_human_review
+                FROM dim_product p
+                LEFT JOIN dim_product_type pt ON pt.product_type_code = p.primary_product_type_code
+                WHERE p.product_id = :product_id
                 """
             ),
             {"product_id": product_id},
@@ -139,7 +139,9 @@ class ProductService:
             .order_by(FactProductObservation.created_at.asc(), FactProductObservation.observation_id.asc())
             .all()
         )
-        return {
+        raw_coverages = [self._model_dict(row) for row in coverages]
+        deduped_coverages, coverage_dedupe_summary = dedupe_major_coverages(raw_coverages)
+        detail = {
             "product_id": product.product_id,
             "raw_product_name": product.raw_product_name,
             "normalized_product_name": product.normalized_product_name,
@@ -163,7 +165,8 @@ class ProductService:
             "product_type_assignments": [dict(row) for row in type_rows],
             "structured_features": [self._model_dict(row) for row in features],
             "narrative_insights": [self._model_dict(row) for row in narratives],
-            "major_coverages": self._dedupe_coverages([self._model_dict(row) for row in coverages]),
+            "major_coverages": deduped_coverages,
+            "coverage_dedupe_summary": coverage_dedupe_summary,
             "sales_metrics": [self._model_dict(row) for row in sales],
             "articles": [dict(row) for row in articles],
             "product_aliases": [self._model_dict(row) for row in aliases],
@@ -172,58 +175,13 @@ class ProductService:
             "merge_decisions": [self._merge_decision_dict(row) for row in merge_rows],
             "correction_audits": [self._correction_dict(row) for row in correction_rows],
         }
+        if debug:
+            detail["raw_coverages"] = raw_coverages
+        return detail
 
     @staticmethod
     def _model_dict(row) -> dict:
         return {column.name: getattr(row, column.name) for column in row.__table__.columns}
-
-    @classmethod
-    def _dedupe_coverages(cls, coverages: list[dict]) -> list[dict]:
-        best_by_key: dict[str, dict] = {}
-        order_by_key: dict[str, int] = {}
-        for index, coverage in enumerate(coverages):
-            key = cls._coverage_identity_key(coverage)
-            if key not in best_by_key:
-                best_by_key[key] = coverage
-                order_by_key[key] = index
-                continue
-            if cls._coverage_selection_score(coverage) > cls._coverage_selection_score(best_by_key[key]):
-                best_by_key[key] = coverage
-        return [best_by_key[key] for key, _ in sorted(order_by_key.items(), key=lambda item: item[1])]
-
-    @classmethod
-    def _coverage_identity_key(cls, coverage: dict) -> str:
-        name = cls._compact_coverage_text(
-            coverage.get("coverage_name_normalized") or coverage.get("coverage_name_raw") or coverage.get("coverage_summary")
-        )
-        condition = cls._compact_coverage_text(coverage.get("condition_text") or coverage.get("limit_text"))
-        return "|".join(
-            [
-                name,
-                cls._compact_coverage_text(coverage.get("risk_area")),
-                cls._compact_coverage_text(coverage.get("benefit_type")),
-                str(coverage.get("max_amount_krw") or ""),
-                condition,
-            ]
-        )
-
-    @staticmethod
-    def _coverage_selection_score(coverage: dict) -> tuple:
-        return (
-            1 if coverage.get("coverage_summary") else 0,
-            len(str(coverage.get("coverage_summary") or "")),
-            1 if coverage.get("max_amount_krw") else 0,
-            1 if coverage.get("condition_text") else 0,
-            float(coverage.get("confidence") or 0.0),
-            -int(coverage.get("display_order") or 0),
-            -int(coverage.get("coverage_id") or 0),
-        )
-
-    @staticmethod
-    def _compact_coverage_text(value) -> str:
-        if value is None:
-            return ""
-        return re.sub(r"[\W_]+", "", str(value).casefold())
 
     @staticmethod
     def _correction_dict(row) -> dict:
@@ -249,20 +207,8 @@ class ProductService:
             return value
 
     def add_manual_type_assignment(self, db: Session, product_id: int, payload: dict) -> None:
-        repository.add_type_assignment(
-            db,
-            product_id,
-            {
-                "product_type_code": payload["product_type_code"],
-                "assignment_role": payload.get("assignment_role", "manual"),
-                "classification_basis": "manual",
-                "evidence_text": payload.get("evidence_text"),
-                "confidence": payload.get("confidence", 1.0),
-                "needs_human_review": False,
-            },
-        )
         product = db.get(DimProduct, product_id)
-        if product and payload.get("assignment_role") in {"manual", "primary"}:
+        if product:
             product.primary_product_type_code = payload["product_type_code"]
             product.needs_review = False
         db.commit()

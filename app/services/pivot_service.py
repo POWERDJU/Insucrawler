@@ -17,7 +17,7 @@ DIMENSION_ALIASES = {
 class PivotService:
     def source_view(self, base: str, classification_mode: str) -> str:
         if base == "product":
-            return "vw_product_all_type_pivot" if classification_mode == "include_secondary" else "vw_product_primary_type_pivot"
+            return "vw_product_primary_type_pivot"
         if base == "coverage":
             return "vw_product_type_coverage_pivot"
         if base == "sales":
@@ -38,7 +38,8 @@ class PivotService:
     ) -> dict[str, Any]:
         view = self.source_view(base, classification_mode)
         df = pd.read_sql_query(f"SELECT * FROM {view}", db.get_bind())
-        if classification_mode == "primary_only" and "assignment_role" in df.columns:
+        classification_mode = "primary_only"
+        if "assignment_role" in df.columns:
             df = df[(df["assignment_role"].isna()) | (df["assignment_role"] == "primary")]
         if not include_review and "needs_review" in df.columns:
             df = df[~df["needs_review"].astype(bool)]

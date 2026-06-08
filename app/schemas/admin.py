@@ -18,6 +18,14 @@ class CrawlJobRunRequest(BaseModel):
     exclusive_right_limit: int | None = Field(default=None, ge=1, le=10000)
     include_reinsurers: bool = False
     include_foreign_branches: bool = False
+    pipeline_mode: str = Field(
+        default="crawl_only",
+        pattern="^(crawl_only|crawl_parse_postprocess|crawl_parse_postprocess_qwen)$",
+    )
+    include_qwen_adjudication: bool = False
+    qwen_priority: bool = True
+    run_postprocess: bool = True
+    run_consolidation: bool = True
 
 
 class CrawlIncrementalRequest(CrawlJobRunRequest):
@@ -27,6 +35,13 @@ class CrawlIncrementalRequest(CrawlJobRunRequest):
 class CrawlManualRangeRequest(CrawlJobRunRequest):
     date_from: str
     date_to: str
+    max_days: int = Field(default=30, ge=1, le=30)
+    include_llm_extraction: bool = True
+    extraction_mode: str = Field(default="batch", pattern="^(none|screening_only|enqueue_only|realtime|batch)$")
+    include_exclusive_right_pipeline: bool = True
+    exclusive_right_pipeline_mode: str = Field(default="batch", pattern="^(none|screening_only|enqueue_only|batch|realtime)$")
+    pipeline_mode: str = Field(default="crawl_parse_postprocess_qwen", pattern="^(crawl_only|crawl_parse_postprocess|crawl_parse_postprocess_qwen)$")
+    include_qwen_adjudication: bool = True
 
 
 class NaverNewsSearchPreviewRequest(BaseModel):
@@ -37,7 +52,7 @@ class NaverNewsSearchPreviewRequest(BaseModel):
 
 
 class LLMBatchCreateRequest(BaseModel):
-    task_type: str = Field(default="extract", pattern="^(extract|verify|adjudicate|cheap_classify|exclusive_right_extract|exclusive_right_verify|exclusive_right_consolidation)$")
+    task_type: str = Field(default="extract", pattern="^(extract|verify|adjudicate|cheap_classify|exclusive_right_extract|exclusive_right_verify|exclusive_right_consolidation|qwen_product_final_review|qwen_exclusive_right_final_review|qwen_article_eligibility_review|qwen_sales_metric_review|qwen_coverage_dedupe_review)$")
     provider: str = Field(default="gemini")
     model_name: str = Field(default="gemini-2.5-flash")
     limit: int = Field(default=1000, ge=1, le=10000)
@@ -85,3 +100,22 @@ class ExclusiveRightConsolidateRequest(BaseModel):
     mode: str = Field(default="dry_run", pattern="^(dry_run|rule_only_apply)$")
     date_from: str | None = None
     date_to: str | None = None
+
+
+class FullReviewQwenRequest(BaseModel):
+    mode: str = Field(default="dry_run", pattern="^(dry_run|apply)$")
+    review_scope: str = Field(default="all", pattern="^(all|products|exclusive_rights|articles|sales_metrics|coverages)$")
+    date_from: str | None = None
+    date_to: str | None = None
+    crawl_job_id: int | None = None
+    include_rule_review: bool = True
+    include_qwen: bool = True
+    qwen_priority: bool = True
+    max_products: int = Field(default=100, ge=0, le=10000)
+    max_exclusive: int = Field(default=50, ge=0, le=10000)
+    apply: bool | None = None
+
+
+class FullReviewApplyRequest(BaseModel):
+    max_products: int | None = Field(default=None, ge=0, le=10000)
+    max_exclusive: int | None = Field(default=None, ge=0, le=10000)

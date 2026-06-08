@@ -735,7 +735,7 @@ function currentQuery() {
     insurance_type: selectedInsuranceType || "전체",
     company_names: selectedInsuranceType ? selectedFilterValues("companyNames") : [],
     product_type_codes: productTypeCodes,
-    classification_mode: "include_secondary",
+    classification_mode: "primary_only",
     pivot_preset: "custom",
     custom_rows: ["company_name", "product_type_name"],
     custom_columns: [],
@@ -922,7 +922,6 @@ function detailHtml(product) {
         ["보험회사", product.company_name],
         ["출시년월", product.release_year_month],
         ["대표 보종군", primary.product_type_name_ko || product.primary_product_type_code],
-        ["보조 보종군", (assignments || []).filter((item) => item.assignment_role === "secondary").map((item) => item.product_type_name_ko || item.product_type_code).join(", ")],
       ]), "detail-card")}
       ${section("상품특성 요약", kv([
         ["가입연령", ageText(feature.join_age_min, feature.join_age_max)],
@@ -1009,10 +1008,19 @@ function dedupeCoverages(coverages) {
 }
 
 function coverageIdentityKey(coverage) {
+  const family = coverageComponentFamily(coverage);
+  if (family) {
+    return [
+      `family:${family}`,
+      normalizeCoverageArea(coverage.risk_area),
+      normalizeBenefitType(coverage.benefit_type),
+      coverage.max_amount_krw || "",
+    ].join("|");
+  }
   return [
     compactCoverageText(coverage.coverage_name_normalized || coverage.coverage_name_raw || coverage.coverage_summary),
-    compactCoverageText(coverage.risk_area),
-    compactCoverageText(coverage.benefit_type),
+    normalizeCoverageArea(coverage.risk_area),
+    normalizeBenefitType(coverage.benefit_type),
     coverage.max_amount_krw || "",
     compactCoverageText(coverage.condition_text || coverage.limit_text),
   ].join("|");
@@ -1033,6 +1041,40 @@ function coverageSelectionScore(coverage) {
 
 function compactCoverageText(value) {
   return value == null ? "" : String(value).toLowerCase().replace(/[\W_]+/g, "");
+}
+
+function normalizeCoverageArea(value) {
+  const compact = compactCoverageText(value);
+  if (/(임신|출산|산모)/.test(compact)) return "임신출산";
+  if (/(법률|변호사|소송)/.test(compact)) return "법률비용";
+  if (/환급/.test(compact)) return "환급";
+  return compact;
+}
+
+function normalizeBenefitType(value) {
+  const compact = compactCoverageText(value);
+  if (/(보험금|지원금|축하금)/.test(compact)) return "정액";
+  if (/환급금/.test(compact)) return "환급";
+  if (/유예/.test(compact)) return "보험료유예";
+  return compact;
+}
+
+function coverageComponentFamily(coverage) {
+  const text = [
+    coverage.coverage_name_normalized,
+    coverage.coverage_name_raw,
+    coverage.risk_area,
+    coverage.benefit_type,
+    coverage.condition_text,
+    coverage.limit_text,
+    coverage.coverage_summary,
+    coverage.evidence_text,
+  ].map((value) => String(value || "")).join(" ");
+  if (/(임신\s*지원|임신\s*축하|임신\s*보험료)/.test(text)) return "pregnancy_support";
+  if (/(출산\s*지원|출산\s*축하|출산\s*하면|출산\s*보험료)/.test(text)) return "childbirth_support";
+  if (/(법률\s*비용|변호사\s*비용|소송\s*비용)/.test(text)) return "legal_cost";
+  if (/(보험료\s*환급|특약\s*보험료\s*환급|건강\s*환급)/.test(text)) return "refund_premium";
+  return "";
 }
 
 function aliasList(aliases) {
@@ -1518,7 +1560,6 @@ function hideMobileProductDetail() {
 function renderMobileProductDetail(product) {
   const assignments = product.product_type_assignments || [];
   const primary = assignments.find((item) => item.assignment_role === "primary") || assignments.find((item) => item.product_type_code === product.primary_product_type_code) || {};
-  const secondary = assignments.filter((item) => item.assignment_role === "secondary").map((item) => item.product_type_name_ko || item.product_type_code).join(", ");
   const feature = (product.structured_features || [])[0] || {};
   const insight = (product.narrative_insights || [])[0] || {};
   const articles = product.articles || [];
@@ -1534,7 +1575,6 @@ function renderMobileProductDetail(product) {
         ["보험회사", product.company_name],
         ["출시년월", product.release_year_month],
         ["대표 상품군", primary.product_type_name_ko || product.primary_product_type_code],
-        ["보조 상품군", secondary],
         ["가입연령", ageText(feature.join_age_min, feature.join_age_max)],
         ["고지유형", feature.notification_type],
         ["판매채널", feature.sales_channel],
@@ -1640,6 +1680,8 @@ function bindAdminEvents() {
   document.getElementById("runExclusiveRightExtraction")?.addEventListener("click", runExclusiveRightExtraction);
   document.getElementById("refreshExclusiveRightQueue")?.addEventListener("click", refreshExclusiveRightQueueStatus);
   document.getElementById("runExclusiveRightConsolidation")?.addEventListener("click", runExclusiveRightConsolidation);
+  document.getElementById("runFullQwenReview")?.addEventListener("click", runFullQwenReview);
+  document.getElementById("refreshScheduledRefresh")?.addEventListener("click", refreshScheduledRefreshStatus);
   document.getElementById("runTestCrawl").addEventListener("click", () => startCrawlJob("/api/admin/crawl-jobs/test-2026-01", adminCrawlOptions()));
   document.getElementById("runBackfillCrawl").addEventListener("click", () => startCrawlJob("/api/admin/crawl-jobs/backfill-2024-2026-05", adminCrawlOptions()));
   document.getElementById("runIncrementalCrawl").addEventListener("click", () =>
@@ -1729,7 +1771,79 @@ function adminCrawlOptions() {
     exclusive_right_limit: exclusiveLimit,
     include_reinsurers: document.getElementById("crawlIncludeReinsurers").checked,
     include_foreign_branches: document.getElementById("crawlIncludeForeignBranches").checked,
+    pipeline_mode: document.getElementById("crawlPipelineMode")?.value || "crawl_only",
+    include_qwen_adjudication: Boolean(document.getElementById("crawlIncludeQwen")?.checked),
+    qwen_priority: true,
+    run_postprocess: Boolean(document.getElementById("crawlRunPostprocess")?.checked),
+    run_consolidation: Boolean(document.getElementById("crawlRunConsolidation")?.checked),
   };
+}
+
+async function runFullQwenReview() {
+  const message = document.getElementById("fullReviewMessage") || document.getElementById("adminJobMessage");
+  const crawlJobId = Number(document.getElementById("fullReviewCrawlJobId")?.value || 0) || null;
+  const payload = {
+    mode: document.getElementById("fullReviewApply")?.checked ? "apply" : "dry_run",
+    review_scope: "all",
+    date_from: document.getElementById("fullReviewDateFrom")?.value || null,
+    date_to: document.getElementById("fullReviewDateTo")?.value || null,
+    crawl_job_id: crawlJobId,
+    include_rule_review: true,
+    include_qwen: true,
+    qwen_priority: true,
+    max_products: Number(document.getElementById("fullReviewProductLimit")?.value || 50),
+    max_exclusive: Number(document.getElementById("fullReviewExclusiveLimit")?.value || 30),
+  };
+  message.textContent = "Qwen 검토를 실행하는 중입니다.";
+  try {
+    const result = await adminPostJson("/api/admin/full-review/qwen", payload);
+    message.textContent = `Qwen 검토 완료: #${result.full_review_job_id || "-"}`;
+    renderTable(document.getElementById("fullReviewTable"), [result], {
+      emptyText: "전체 검토 결과가 없습니다.",
+      preferredKeys: [
+        "full_review_job_id",
+        "status",
+        "mode",
+        "date_from",
+        "date_to",
+        "crawl_job_id",
+        "article_count",
+        "product_candidate_count",
+        "exclusive_candidate_count",
+        "qwen_processed_count",
+        "qwen_provider_called_count",
+        "qwen_remaining_count",
+        "report_path",
+        "error_message",
+      ],
+    });
+  } catch (error) {
+    message.textContent = error.message;
+  }
+}
+
+async function refreshScheduledRefreshStatus() {
+  const table = document.getElementById("scheduledRefreshTable");
+  if (!table || !state.adminToken) return;
+  try {
+    const result = await adminGetJson("/api/admin/scheduled-refresh/status");
+    renderTable(table, [result], {
+      emptyText: "예약 새로고침 상태가 없습니다.",
+      preferredKeys: [
+        "enabled",
+        "timezone",
+        "days_of_month",
+        "hour",
+        "lookback_days",
+        "running_job_count",
+        "next_run_at",
+        "latest_job",
+      ],
+    });
+  } catch (error) {
+    const message = document.getElementById("fullReviewMessage") || document.getElementById("adminJobMessage");
+    message.textContent = error.message;
+  }
 }
 
 async function authenticateAdmin() {
@@ -1776,6 +1890,7 @@ async function refreshCrawlJobs() {
     await refreshLlmBatchJobs();
     await refreshLlmGuardSummary();
     await refreshProductConsolidation();
+    await refreshScheduledRefreshStatus();
   } catch (error) {
     document.getElementById("adminJobMessage").textContent = error.message;
     if (error.message.includes("401")) {

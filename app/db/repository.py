@@ -26,7 +26,6 @@ from app.db.models import (
     FactProductObservation,
     FactProductPartner,
     FactProductStructuredFeature,
-    FactProductTypeAssignment,
     FactSalesMetricStructured,
 )
 from app.normalizers.amount_normalizer import normalize_coverage_amount
@@ -43,7 +42,16 @@ from app.normalizers.product_name_normalizer import (
 from app.utils.dates import current_year_month
 from app.utils.dates import utcnow
 from app.services.company_attribution_service import CompanyAttributionService
+from app.services.article_eligibility_filter_service import (
+    is_non_insurance_financial_product_name,
+    is_non_insurance_general_product_name,
+)
 from app.services.product_company_eligibility import is_product_news_eligible_company
+from app.services.product_type_industry_validation_service import ProductTypeIndustryValidationService
+from app.services.release_month_resolver import (
+    parse_explicit_release_year_month,
+    release_basis_priority,
+)
 
 
 PROTECTED_RELEASE_BASES = {"explicit_in_article", "manual", "external_grounded_source"}
@@ -135,6 +143,13 @@ def company_aliases_for_company(company: DimCompany | None) -> list[str]:
 
 def upsert_product(db: Session, product: dict[str, Any], *, allow_unknown_company: bool = True) -> DimProduct | None:
     raw_name = product.get("raw_product_name") or product.get("normalized_product_name") or "unknown"
+    if (
+        is_non_insurance_financial_product_name(raw_name)
+        or is_non_insurance_financial_product_name(product.get("normalized_product_name"))
+        or is_non_insurance_general_product_name(raw_name)
+        or is_non_insurance_general_product_name(product.get("normalized_product_name"))
+    ):
+        return None
     original_raw_name = raw_name
     company, resolved_company_raw, company_needs_review = resolve_company_for_product(
         db,
@@ -153,7 +168,7 @@ def upsert_product(db: Session, product: dict[str, Any], *, allow_unknown_compan
     if not validation.accepted:
         return None
     raw_name = validation.cleaned_name
-    normalized_name = normalize_product_name(product.get("normalized_product_name") or raw_name, company_aliases)
+    normalized_name = normalize_product_name(raw_name, company_aliases)
     product_insurance_type = product.get("insurance_type")
     if company:
         company_insurance_type = company.insurance_type_default or company.insurance_type or "unknown"
@@ -171,6 +186,17 @@ def upsert_product(db: Session, product: dict[str, Any], *, allow_unknown_compan
     product_identity_key = build_product_identity_key(company_id, normalized_name or raw_name, company_aliases)
     existing = _find_existing_product(db, company_id, key, product_core_key, product_identity_key, core_key_candidates)
     needs_review = bool(product.get("needs_review", True) or company_needs_review or not company_id)
+    primary_product_type_code = product.get("primary_product_type_code") or "UNKNOWN"
+    type_validation = ProductTypeIndustryValidationService().validate(
+        insurance_type=product_insurance_type,
+        primary_product_type_code=primary_product_type_code,
+        product_name=normalized_name or raw_name,
+        company_name=company_name_for_key,
+    )
+    product_status = product.get("product_status") or "active"
+    if not type_validation.valid:
+        needs_review = True
+        product_status = type_validation.proposed_status or product_status
     values = {
         "normalized_product_name": normalized_name,
         "raw_product_name": raw_name,
@@ -183,11 +209,11 @@ def upsert_product(db: Session, product: dict[str, Any], *, allow_unknown_compan
         "release_year_month": product.get("release_year_month"),
         "release_year_month_basis": product.get("release_year_month_basis") or "unknown",
         "first_seen_month": product.get("first_seen_month") or current_year_month(),
-        "primary_product_type_code": product.get("primary_product_type_code") or "UNKNOWN",
+        "primary_product_type_code": primary_product_type_code,
         "product_category_summary": product.get("product_category_summary"),
         "confidence_total": float(product.get("confidence_total") or 0.0),
         "needs_review": needs_review,
-        "product_status": product.get("product_status") or "active",
+        "product_status": product_status,
         "canonical_product_id": product.get("canonical_product_id"),
         "partner_company_name": product.get("partner_company_name"),
         "partner_context_summary": product.get("partner_context_summary"),
@@ -220,9 +246,14 @@ def upsert_product(db: Session, product: dict[str, Any], *, allow_unknown_compan
         for key_name, value in values.items():
             if key_name in conflicting_unique_keys:
                 continue
-            if key_name == "release_year_month" and value is None:
-                continue
-            if key_name == "product_status" and getattr(existing, "product_status", None) in {"active", "review"}:
+            if key_name in {"release_year_month", "release_year_month_basis"}:
+                incoming_basis = values.get("release_year_month_basis") or "unknown"
+                existing_basis = existing.release_year_month_basis or "unknown"
+                if key_name == "release_year_month" and value is None:
+                    continue
+                if release_basis_priority(incoming_basis) < release_basis_priority(existing_basis):
+                    continue
+            if key_name == "product_status" and value not in {"excluded_invalid_industry_product_type", "rejected_ineligible_article_only"} and getattr(existing, "product_status", None) in {"active", "review"}:
                 continue
             if value is not None or key_name in {"product_category_summary"}:
                 setattr(existing, key_name, value)
@@ -491,20 +522,25 @@ def add_product_partner(
     return item
 
 
-def add_type_assignment(db: Session, product_id: int, assignment: dict[str, Any], article_id: int | None = None) -> FactProductTypeAssignment:
-    item = FactProductTypeAssignment(
-        product_id=product_id,
-        article_id=article_id,
-        product_type_code=assignment.get("product_type_code") or assignment.get("code") or "UNKNOWN",
-        assignment_role=assignment.get("assignment_role") or assignment.get("role") or "tag",
-        classification_basis=assignment.get("classification_basis") or assignment.get("basis"),
-        evidence_text=assignment.get("evidence_text"),
-        confidence=float(assignment.get("confidence") or 0.0),
-        needs_human_review=bool(assignment.get("needs_human_review", False)),
-    )
-    db.add(item)
+def add_type_assignment(db: Session, product_id: int, assignment: dict[str, Any], article_id: int | None = None) -> DimProduct | None:
+    """Compatibility shim: product type is now stored only on dim_product.
+
+    Older ingestion payloads may still send product_type_assignments. Treat a
+    primary/manual assignment as a request to update the product's representative
+    type and ignore secondary assignments.
+    """
+
+    role = assignment.get("assignment_role") or assignment.get("role") or "tag"
+    if role not in {"primary", "manual"}:
+        return db.get(DimProduct, product_id)
+    product = db.get(DimProduct, product_id)
+    if not product:
+        return None
+    product.primary_product_type_code = assignment.get("product_type_code") or assignment.get("code") or product.primary_product_type_code or "UNKNOWN"
+    if role == "manual":
+        product.needs_review = False
     db.flush()
-    return item
+    return product
 
 
 def add_structured_feature(db: Session, product_id: int, feature: dict[str, Any], article_id: int | None = None) -> FactProductStructuredFeature:
@@ -639,9 +675,10 @@ def update_release_month_if_unknown(db: Session, product_id: int) -> bool:
     product = db.get(DimProduct, product_id)
     if not product:
         return False
-    if product.release_year_month and product.release_year_month_basis in PROTECTED_RELEASE_BASES:
+    current_basis = product.release_year_month_basis or "unknown"
+    if product.release_year_month and current_basis in PROTECTED_RELEASE_BASES:
         return False
-    if product.release_year_month and product.release_year_month_basis not in INFERABLE_RELEASE_BASES:
+    if product.release_year_month and current_basis not in INFERABLE_RELEASE_BASES:
         return False
     articles = (
         db.query(FactArticle)
@@ -650,6 +687,25 @@ def update_release_month_if_unknown(db: Session, product_id: int) -> bool:
         .order_by(FactArticle.pub_date.asc(), FactArticle.article_id.asc())
         .all()
     )
+    explicit = _select_explicit_release_month_article(db, product, articles)
+    if explicit:
+        article, explicit_month = explicit
+        if product.release_year_month and release_basis_priority("explicit_in_article") < release_basis_priority(current_basis):
+            return False
+        if (
+            product.release_year_month == explicit_month
+            and product.release_year_month_basis == "explicit_in_article"
+            and product.release_year_month_source_article_id == article.article_id
+        ):
+            return False
+        product.release_year_month = explicit_month
+        product.release_year_month_basis = "explicit_in_article"
+        product.release_year_month_source_article_id = article.article_id
+        product.release_year_month_source_type = article.source_api
+        product.release_year_month_inferred_at = utcnow()
+        db.flush()
+        return True
+
     article = _select_release_month_article(db, product, articles)
     if not article or not article.pub_date:
         return False
@@ -658,6 +714,8 @@ def update_release_month_if_unknown(db: Session, product_id: int) -> bool:
         product.release_year_month == inferred_month
         and product.release_year_month_source_article_id == article.article_id
     ):
+        return False
+    if product.release_year_month and release_basis_priority("earliest_related_article_month") < release_basis_priority(current_basis):
         return False
     if product.release_year_month and product.release_year_month_basis not in INFERABLE_RELEASE_BASES:
         return False
@@ -668,6 +726,76 @@ def update_release_month_if_unknown(db: Session, product_id: int) -> bool:
     product.release_year_month_inferred_at = utcnow()
     db.flush()
     return True
+
+
+def _select_explicit_release_month_article(
+    db: Session,
+    product: DimProduct,
+    articles: list[FactArticle],
+) -> tuple[FactArticle, str] | None:
+    aliases = [
+        alias.raw_product_name
+        for alias in db.query(DimProductAlias).filter(DimProductAlias.product_id == product.product_id).all()
+        if alias.raw_product_name
+    ]
+    ranked: list[tuple[Any, int, FactArticle, str]] = []
+    for article in articles:
+        text_value = " ".join(filter(None, [article.title, article.description]))
+        if not _explicit_release_version_compatible(text_value, product, aliases):
+            continue
+        if not _article_mentions_product(text_value, product, aliases):
+            continue
+        explicit_month = parse_explicit_release_year_month(text_value, article.pub_date)
+        if not explicit_month:
+            continue
+        product_versions = _product_versions_for_release(product, aliases)
+        if product_versions and not _explicit_month_window_mentions_version(text_value, explicit_month, product_versions):
+            continue
+        ranked.append((article.pub_date, int(article.article_id or 0), article, explicit_month))
+    if not ranked:
+        return None
+    _, _, article, explicit_month = sorted(ranked, key=lambda item: (item[0], item[1]))[0]
+    return article, explicit_month
+
+
+def _explicit_release_version_compatible(text_value: str, product: DimProduct, aliases: list[str]) -> bool:
+    product_versions = _product_versions_for_release(product, aliases)
+    if not product_versions:
+        return True
+    article_versions = version_signature(text_value)
+    return bool(article_versions and product_versions.intersection(article_versions))
+
+
+def _product_versions_for_release(product: DimProduct, aliases: list[str]) -> set[str]:
+    product_versions = set()
+    for value in [
+        product.normalized_product_name,
+        product.raw_product_name,
+        product.product_core_key,
+        product.product_identity_key,
+        *aliases,
+    ]:
+        product_versions.update(version_signature(value))
+    return product_versions
+
+
+def _explicit_month_window_mentions_version(text_value: str, explicit_month: str, product_versions: set[str]) -> bool:
+    year, month = explicit_month.split("-", 1)
+    month_int = str(int(month))
+    patterns = [
+        rf"{re.escape(year)}\s*년\s*0?{re.escape(month_int)}\s*월",
+        rf"{re.escape(year)}[./-]0?{re.escape(month_int)}",
+    ]
+    sentences = [item for item in re.split(r"[.!?。]\s*|다\.\s*|요\.\s*|니다\.\s*", text_value or "") if item]
+    for sentence in sentences:
+        if not any(re.search(pattern, sentence) for pattern in patterns):
+            continue
+        if any(term in sentence for term in ("출시된 이후", "출시 이후", "시리즈는", "시리즈")):
+            continue
+        window_versions = version_signature(sentence)
+        if product_versions.intersection(window_versions):
+            return True
+    return False
 
 
 def _select_release_month_article(db: Session, product: DimProduct, articles: list[FactArticle]) -> FactArticle | None:
@@ -720,7 +848,7 @@ def _article_version_compatible(text_value: str, product: DimProduct, aliases: l
     if not product_versions:
         return True
     article_versions = version_signature(text_value)
-    return not article_versions or bool(product_versions.intersection(article_versions))
+    return bool(article_versions and product_versions.intersection(article_versions))
 
 
 def _article_mentions_product(text_value: str, product: DimProduct, aliases: list[str]) -> bool:

@@ -3,16 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>보험상품 뉴스 자동조사봇</title>
+    <title>인슈크롤러 - 보험상품 뉴스 자동조사봇</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20260604-mobile-board-height" />
+    <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20260607-brand-title" />
   </head>
   <body>
     <header class="app-header">
       <div class="brand-title-wrap">
-        <h1>보험상품 뉴스 자동조사봇</h1>
+        <h1>인슈크롤러</h1>
+        <p class="app-subtitle">보험상품 뉴스 자동조사봇</p>
       </div>
       <nav class="header-actions desktop-only" aria-label="보조 링크">
         <button id="toggleAdminPanel" type="button" class="admin-update-button">
@@ -261,6 +262,17 @@
                 <label><span>배타적사용권 limit</span><input id="crawlExclusiveRightLimit" type="number" min="1" max="10000" placeholder="1000" /></label>
                 <label class="checkbox-line"><input id="crawlIncludeReinsurers" type="checkbox" /><span>재보험 포함</span></label>
                 <label class="checkbox-line"><input id="crawlIncludeForeignBranches" type="checkbox" /><span>외국지점 포함</span></label>
+                <label>
+                  <span>파이프라인</span>
+                  <select id="crawlPipelineMode">
+                    <option value="crawl_only" selected>수집만</option>
+                    <option value="crawl_parse_postprocess">수집+파싱+후처리</option>
+                    <option value="crawl_parse_postprocess_qwen">수집+파싱+후처리+Qwen</option>
+                  </select>
+                </label>
+                <label class="checkbox-line"><input id="crawlRunPostprocess" type="checkbox" checked /><span>후처리 실행</span></label>
+                <label class="checkbox-line"><input id="crawlRunConsolidation" type="checkbox" checked /><span>통합 실행</span></label>
+                <label class="checkbox-line"><input id="crawlIncludeQwen" type="checkbox" /><span>Qwen 최종판정 실행</span></label>
               </fieldset>
               <div class="admin-action-card">
                 <h3>테스트 수집</h3>
@@ -310,9 +322,35 @@
                 <button id="refreshExclusiveRightQueue" type="button" class="secondary">queue status</button>
                 <button id="runExclusiveRightConsolidation" type="button" class="secondary">rule consolidation</button>
               </div>
+              <div class="admin-action-card">
+                <h3>전체 Qwen 검토</h3>
+                <label><span>시작일</span><input id="fullReviewDateFrom" type="date" value="2025-01-01" /></label>
+                <label><span>종료일</span><input id="fullReviewDateTo" type="date" value="2026-05-31" /></label>
+                <label><span>Crawl job ID</span><input id="fullReviewCrawlJobId" type="number" min="1" placeholder="선택" /></label>
+                <label><span>상품 limit</span><input id="fullReviewProductLimit" type="number" min="0" max="10000" value="50" /></label>
+                <label><span>배타권 limit</span><input id="fullReviewExclusiveLimit" type="number" min="0" max="10000" value="30" /></label>
+                <label class="checkbox-line"><input id="fullReviewApply" type="checkbox" /><span>수정 적용</span></label>
+                <button id="runFullQwenReview" type="button">Qwen 검토 실행</button>
+              </div>
+              <div class="admin-action-card">
+                <h3>예약 새로고침</h3>
+                <button id="refreshScheduledRefresh" type="button" class="secondary">예약 상태 조회</button>
+              </div>
             </div>
             <div class="admin-warning">전체 수집은 오래 걸릴 수 있으며 API 호출량과 LLM 비용이 발생할 수 있습니다.</div>
             <div id="adminJobMessage" class="muted"></div>
+            <section class="admin-report">
+              <div class="panel-header">
+                <h3>전체 검토 / 예약 새로고침</h3>
+              </div>
+              <div id="fullReviewMessage" class="muted"></div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="fullReviewTable"></table>
+              </div>
+              <div class="table-wrap admin-table-wrap">
+                <table id="scheduledRefreshTable"></table>
+              </div>
+            </section>
             <section class="admin-report">
               <div class="panel-header">
                 <h3>LLM 비용절감 리포트</h3>

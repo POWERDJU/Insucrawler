@@ -70,7 +70,7 @@ VIEW_SQL = {
             GROUP BY sf.product_id
         ) latest_sf ON latest_sf.product_id = p.product_id
         LEFT JOIN fact_product_structured_feature sf ON sf.feature_id = latest_sf.latest_feature_id
-        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_marketing_only')
+        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')
     """,
     "vw_product_all_type_pivot": """
         CREATE VIEW vw_product_all_type_pivot AS
@@ -100,9 +100,9 @@ VIEW_SQL = {
             p.last_consolidated_at,
             p.partner_company_name,
             p.partner_context_summary,
-            a.product_type_code,
+            p.primary_product_type_code AS product_type_code,
             pt.product_type_name_ko AS product_type_name,
-            a.assignment_role,
+            'primary' AS assignment_role,
             p.confidence_total,
             p.needs_review,
             COALESCE(pa.article_count, 0) AS article_count,
@@ -111,8 +111,7 @@ VIEW_SQL = {
             sf.sales_channel
         FROM dim_product p
         LEFT JOIN dim_company c ON c.company_id = p.company_id
-        LEFT JOIN fact_product_type_assignment a ON a.product_id = p.product_id
-        LEFT JOIN dim_product_type pt ON pt.product_type_code = a.product_type_code
+        LEFT JOIN dim_product_type pt ON pt.product_type_code = p.primary_product_type_code
         LEFT JOIN (
             SELECT pa.product_id, COUNT(DISTINCT pa.article_id) AS article_count
             FROM fact_product_article pa
@@ -137,7 +136,7 @@ VIEW_SQL = {
             GROUP BY sf.product_id
         ) latest_sf ON latest_sf.product_id = p.product_id
         LEFT JOIN fact_product_structured_feature sf ON sf.feature_id = latest_sf.latest_feature_id
-        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_marketing_only')
+        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')
     """,
     "vw_product_type_coverage_pivot": """
         CREATE VIEW vw_product_type_coverage_pivot AS
@@ -157,9 +156,9 @@ VIEW_SQL = {
             p.alias_count,
             p.consolidation_status,
             p.last_consolidated_at,
-            a.product_type_code,
+            p.primary_product_type_code AS product_type_code,
             pt.product_type_name_ko AS product_type_name,
-            a.assignment_role,
+            'primary' AS assignment_role,
             p.normalized_product_name AS product_name,
             p.company_name_raw,
             cov.risk_area,
@@ -173,11 +172,10 @@ VIEW_SQL = {
         JOIN dim_product p ON p.product_id = cov.product_id
         LEFT JOIN fact_article ar ON ar.article_id = cov.article_id
         LEFT JOIN dim_company c ON c.company_id = p.company_id
-        LEFT JOIN fact_product_type_assignment a ON a.product_id = p.product_id
-        LEFT JOIN dim_product_type pt ON pt.product_type_code = a.product_type_code
+        LEFT JOIN dim_product_type pt ON pt.product_type_code = p.primary_product_type_code
         WHERE cov.detail_level IN ('exact_coverage', 'coverage_group')
           AND COALESCE(ar.multi_company_article_yn, 0) = 0
-          AND COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_marketing_only')
+          AND COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')
     """,
     "vw_product_sales_pivot": """
         CREATE VIEW vw_product_sales_pivot AS
@@ -197,9 +195,9 @@ VIEW_SQL = {
             p.alias_count,
             p.consolidation_status,
             p.last_consolidated_at,
-            a.product_type_code,
+            p.primary_product_type_code AS product_type_code,
             pt.product_type_name_ko AS product_type_name,
-            a.assignment_role,
+            'primary' AS assignment_role,
             p.normalized_product_name AS product_name,
             p.company_name_raw,
             sm.metric_name,
@@ -212,10 +210,9 @@ VIEW_SQL = {
         JOIN dim_product p ON p.product_id = sm.product_id
         LEFT JOIN fact_article ar ON ar.article_id = sm.article_id
         LEFT JOIN dim_company c ON c.company_id = p.company_id
-        LEFT JOIN fact_product_type_assignment a ON a.product_id = p.product_id
-        LEFT JOIN dim_product_type pt ON pt.product_type_code = a.product_type_code
+        LEFT JOIN dim_product_type pt ON pt.product_type_code = p.primary_product_type_code
         WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
-          AND COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_marketing_only')
+          AND COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')
     """,
     "vw_product_search": """
         CREATE VIEW vw_product_search AS
@@ -247,12 +244,6 @@ VIEW_SQL = {
             p.partner_company_name,
             p.partner_context_summary,
             pt.product_type_name_ko AS primary_product_type,
-            (
-                SELECT GROUP_CONCAT(pt2.product_type_name_ko, ',')
-                FROM fact_product_type_assignment a2
-                JOIN dim_product_type pt2 ON pt2.product_type_code = a2.product_type_code
-                WHERE a2.product_id = p.product_id AND a2.assignment_role = 'secondary'
-            ) AS secondary_product_types,
             ni.coverage_summary,
             p.confidence_total,
             p.needs_review
@@ -267,7 +258,7 @@ VIEW_SQL = {
             GROUP BY ni.product_id
         ) latest_ni ON latest_ni.product_id = p.product_id
         LEFT JOIN fact_product_narrative_insight ni ON ni.insight_id = latest_ni.latest_insight_id
-        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_marketing_only')
+        WHERE COALESCE(p.product_status, 'active') NOT IN ('merged', 'rejected', 'rejected_multi_company_only', 'rejected_ineligible_article_only', 'rejected_marketing_only', 'excluded_invalid_industry_product_type', 'rejected_ineligible_article_only')
     """,
 }
 
@@ -379,6 +370,18 @@ CRAWL_JOB_COLUMN_MIGRATIONS = {
     "exclusive_right_consolidation_job_id": "INTEGER",
     "exclusive_right_pipeline_status": "VARCHAR(100) DEFAULT 'not_requested'",
     "exclusive_right_pipeline_error": "TEXT",
+    "pipeline_mode": "VARCHAR(100) DEFAULT 'crawl_only'",
+    "include_qwen_adjudication": "BOOLEAN DEFAULT 0",
+    "qwen_priority": "BOOLEAN DEFAULT 1",
+    "run_postprocess": "BOOLEAN DEFAULT 1",
+    "run_consolidation": "BOOLEAN DEFAULT 1",
+    "scheduled_run_at": "DATETIME",
+    "scheduled_timezone": "VARCHAR(100)",
+    "postprocess_status": "VARCHAR(100) DEFAULT 'not_requested'",
+    "consolidation_status": "VARCHAR(100) DEFAULT 'not_requested'",
+    "qwen_review_status": "VARCHAR(100) DEFAULT 'not_requested'",
+    "full_review_job_id": "INTEGER",
+    "report_path": "TEXT",
 }
 
 
@@ -646,7 +649,15 @@ def upgrade_crawl_job_columns(bind=engine) -> None:
                     exclusive_right_queue_created_count = COALESCE(exclusive_right_queue_created_count, 0),
                     exclusive_right_imported_count = COALESCE(exclusive_right_imported_count, 0),
                     exclusive_right_canonical_count = COALESCE(exclusive_right_canonical_count, 0),
-                    exclusive_right_pipeline_status = COALESCE(exclusive_right_pipeline_status, 'not_requested')
+                    exclusive_right_pipeline_status = COALESCE(exclusive_right_pipeline_status, 'not_requested'),
+                    pipeline_mode = COALESCE(pipeline_mode, 'crawl_only'),
+                    include_qwen_adjudication = COALESCE(include_qwen_adjudication, 0),
+                    qwen_priority = COALESCE(qwen_priority, 1),
+                    run_postprocess = COALESCE(run_postprocess, 1),
+                    run_consolidation = COALESCE(run_consolidation, 1),
+                    postprocess_status = COALESCE(postprocess_status, 'not_requested'),
+                    consolidation_status = COALESCE(consolidation_status, 'not_requested'),
+                    qwen_review_status = COALESCE(qwen_review_status, 'not_requested')
                 """
             )
         )
@@ -770,6 +781,13 @@ def create_views(bind=engine) -> None:
             conn.execute(text(ddl))
 
 
+def drop_product_type_assignment_table(bind=engine) -> None:
+    if not bind.url.get_backend_name().startswith("sqlite"):
+        return
+    with bind.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS fact_product_type_assignment"))
+
+
 def init_db(bind=engine) -> None:
     Base.metadata.create_all(bind=bind)
     upgrade_company_columns(bind)
@@ -782,4 +800,5 @@ def init_db(bind=engine) -> None:
     upgrade_crawl_job_columns(bind)
     upgrade_content_screening_columns(bind)
     upgrade_exclusive_right_columns(bind)
+    drop_product_type_assignment_table(bind)
     create_views(bind)

@@ -878,9 +878,9 @@ body {
 }
 
 .app-header {
-  min-height: 76px;
+  min-height: 108px;
   align-items: center;
-  padding: 18px 32px;
+  padding: 20px 32px;
   background: var(--brand-orange);
   border-bottom: 1px solid var(--brand-orange-dark);
   color: #ffffff;
@@ -888,7 +888,8 @@ body {
 
 .brand-title-wrap {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 0;
   min-width: 0;
 }
@@ -896,9 +897,18 @@ body {
 .app-header h1 {
   margin: 0;
   color: #ffffff;
-  font-size: clamp(30px, 3vw, 36px);
+  font-size: clamp(39px, 3.9vw, 47px);
   font-weight: 700;
   line-height: 1.16;
+}
+
+.app-subtitle {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.18;
+  letter-spacing: 0;
 }
 
 .header-actions {
@@ -1169,6 +1179,12 @@ input.keyword-search {
   caret-color: #111111;
 }
 
+#adminPassword {
+  background: #ffffff;
+  color: #111111;
+  caret-color: #111111;
+}
+
 input.keyword-search::placeholder {
   color: #666666;
 }
@@ -1405,15 +1421,20 @@ a:hover {
   .brand-title-wrap {
     min-width: 0;
     flex: 1 1 auto;
-    align-items: center;
+    align-items: flex-start;
   }
 
   .app-header h1 {
     max-width: 100%;
-    font-size: 22px;
+    font-size: 29px;
     line-height: 1.22;
     word-break: keep-all;
     overflow-wrap: anywhere;
+  }
+
+  .app-subtitle {
+    font-size: 24px;
+    line-height: 1.18;
   }
 
   .header-actions {
@@ -1891,17 +1912,22 @@ a:hover {
 
 @media (max-width: 720px) {
   .app-header {
-    padding: 14px 16px;
+    padding: 16px;
   }
 
   .brand-title-wrap {
-    align-items: center;
+    align-items: flex-start;
     min-width: 0;
   }
 
   .app-header h1 {
-    font-size: 22px;
+    font-size: 29px;
     line-height: 1.22;
+  }
+
+  .app-subtitle {
+    font-size: 24px;
+    line-height: 1.18;
   }
 
   .admin-update-button {

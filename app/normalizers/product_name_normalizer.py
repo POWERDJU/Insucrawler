@@ -149,6 +149,73 @@ class ProductNameValidationResult:
     reason: str = ""
 
 
+@dataclass(frozen=True)
+class CleanedNameResult:
+    original_name: str
+    cleaned_name: str
+    removed_prefixes: tuple[str, ...] = ()
+    needs_review: bool = False
+    reject: bool = False
+    reason: str = ""
+
+
+DEFAULT_KOREAN_DISCOURSE_PREFIXES = (
+    "이를 기반으로",
+    "이와 함께",
+    "이외에도",
+    "아울러서",
+    "이밖에",
+    "이어서",
+    "더불어",
+    "그러나",
+    "그런데",
+    "하지만",
+    "아울러",
+    "한편",
+    "또한",
+    "다만",
+    "물론",
+    "최근",
+    "이날",
+    "이달",
+    "이번",
+    "먼저",
+    "우선",
+    "이에",
+    "이후",
+    "나아가",
+    "결합한",
+    "따라",
+    "특히",
+    "이어",
+    "또",
+)
+
+
+@lru_cache(maxsize=1)
+def _noise_rules() -> dict[str, list[str]]:
+    config_path = Path(__file__).resolve().parents[2] / "config" / "product_name_noise_rules.yaml"
+    loaded: dict[str, list[str]] = {}
+    if config_path.exists():
+        with config_path.open("r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        if isinstance(raw, dict):
+            for key, value in raw.items():
+                if isinstance(value, list):
+                    loaded[key] = [str(item).strip() for item in value if str(item).strip()]
+    return {
+        "korean_discourse_prefixes": list(
+            dict.fromkeys([*DEFAULT_KOREAN_DISCOURSE_PREFIXES, *loaded.get("korean_discourse_prefixes", [])])
+        )
+    }
+
+
+def _korean_discourse_prefix_pattern() -> re.Pattern[str]:
+    prefixes = sorted(_noise_rules()["korean_discourse_prefixes"], key=len, reverse=True)
+    escaped = "|".join(re.escape(item) for item in prefixes)
+    return re.compile(rf"^\s*({escaped})(?:\s*[,·.:：;\-–—]\s*|\s+)", re.IGNORECASE)
+
+
 WEAK_PRODUCT_NAME_EXACTS = {
     "해당상품",
     "해당특약",
@@ -161,6 +228,8 @@ WEAK_PRODUCT_NAME_EXACTS = {
     "이보험",
     "신상품",
     "종합보험",
+    "건강보험",
+    "간편건강보험",
     "보험상품",
     "상품",
     "보험",
@@ -171,13 +240,67 @@ WEAK_PRODUCT_NAME_EXACTS = {
     "보장",
     "할인",
     "할인특약",
+    "보장성보험",
+    "손해보험",
+    "생명보험",
+    "장기보장성보험",
+    "장기 보장성보험",
+    "간편건강보험",
+    "건강보험",
+    "보험료할인",
+    "보험료 할인",
+    "보험특허상품",
+    "보험 특허 상품",
+    "보험업계의특허권",
+    "보험 업계의 특허권",
+    "보험특허권",
+    "보험 특허권",
+    "특약종류",
+    "특약 종류",
+    "특화상품",
+    "특화 상품",
+    "법률관련상품",
+    "법률 관련 상품",
 }
 BAD_PRODUCT_NAME_FRAGMENTS = {
     "지키면보험",
     "다만건강보험",
+    "12일사망보험",
+    "12일 사망보험",
+    "먼저보험",
+    "우선보험",
+    "이밖에보험",
+    "따라보험",
+    "결합한보험",
+    "이에손해보험",
+    "이후변액보험",
+    "나아가장기보장성보험",
+    "월2000원대보험",
+    "이를기반으로안전운전시보험",
+    "계리가정에보험",
+    "보험사일제히상품",
+    "보험사일제히신상품",
+    "이는건강보험",
+    "해당특약",
+    "해당보험",
+    "보장공백메운다",
+    "뉴스위클리픽보험",
 }
 BAD_PRODUCT_NAME_PREFIXES = {
     "다만",
+    "먼저",
+    "우선",
+    "이밖에",
+    "이후",
+    "이에",
+    "나아가",
+    "따라",
+    "결합한",
+    "이는",
+    "해당",
+    "이번",
+    "이런",
+    "위클리픽",
 }
 
 
@@ -187,8 +310,39 @@ def _guard_compact(value: str | None) -> str:
 
 def clean_product_name_candidate(name: str | None, company_aliases: list[str] | None = None) -> str:
     cleaned = normalize_product_name(name, company_aliases)
+    cleaned, _ = strip_korean_discourse_prefixes(cleaned)
     cleaned = re.sub(r"^[,.;:·\-\s]+|[,.;:·\-\s]+$", "", cleaned)
     return compact_spaces(cleaned)
+
+
+def strip_korean_discourse_prefixes(name: str | None, *, max_iterations: int = 3) -> tuple[str, list[str]]:
+    cleaned = unicodedata.normalize("NFKC", name or "")
+    removed: list[str] = []
+    pattern = _korean_discourse_prefix_pattern()
+    for _ in range(max_iterations):
+        match = pattern.match(cleaned)
+        if not match:
+            break
+        removed.append(match.group(1))
+        cleaned = cleaned[match.end() :]
+    return compact_spaces(cleaned), removed
+
+
+def clean_product_name_candidate_result(name: str | None, company_aliases: list[str] | None = None) -> CleanedNameResult:
+    original = name or ""
+    normalized = normalize_product_name(original, company_aliases)
+    stripped, removed = strip_korean_discourse_prefixes(normalized)
+    cleaned = re.sub(r"^[,.;:·\-\s]+|[,.;:·\-\s]+$", "", stripped)
+    cleaned = compact_spaces(cleaned)
+    reject = is_bad_product_name_fragment(cleaned) or is_generic_or_weak_product_name(cleaned) or len(_guard_compact(cleaned)) < 4
+    return CleanedNameResult(
+        original_name=original,
+        cleaned_name=cleaned,
+        removed_prefixes=tuple(removed),
+        needs_review=bool(removed and reject),
+        reject=reject,
+        reason="removed_leading_discourse_prefix" if removed else "",
+    )
 
 
 def is_bad_product_name_fragment(name: str | None) -> bool:
@@ -402,6 +556,27 @@ def version_signature(raw_product_name: str | None) -> set[str]:
     return versions
 
 
+def extract_product_version_signature(raw_product_name: str | None) -> set[str]:
+    return version_signature(raw_product_name)
+
+
+def resolve_product_version_from_aliases(names: list[str | None] | tuple[str | None, ...]) -> set[str]:
+    versions: set[str] = set()
+    for name in names:
+        versions.update(version_signature(name))
+    return versions
+
+
+def detect_version_conflict_among_aliases(names: list[str | None] | tuple[str | None, ...]) -> bool:
+    return len(resolve_product_version_from_aliases(names)) > 1
+
+
+def canonical_name_should_include_version(name: str | None, aliases: list[str | None] | tuple[str | None, ...] = ()) -> bool:
+    name_versions = version_signature(name)
+    alias_versions = resolve_product_version_from_aliases(aliases)
+    return bool(alias_versions and not name_versions)
+
+
 def is_generic_product_family_signature(signature: str | None) -> bool:
     if not signature:
         return True
@@ -473,6 +648,7 @@ def _ordered_family_tokens(tokens: set[str]) -> list[str]:
         "날씨피해",
         "전이암",
         "미리받는서비스",
+        "출산지원",
     ]
     result = [token for token in preferred if token in tokens]
     result.extend(sorted(token for token in tokens if token not in set(preferred)))

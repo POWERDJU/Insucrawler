@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.api import routes_admin, routes_articles, routes_companies, routes_company_logos, routes_dashboard, routes_exclusive_rights, routes_extractions, routes_ingestion, routes_llm_runs, routes_pivots, routes_products, routes_review
+from app.services.scheduled_refresh_service import ScheduledRefreshService
 
 app = FastAPI(title="Insurance News Intelligence MVP", version="0.1.0")
 
@@ -20,6 +21,16 @@ app.include_router(routes_products.router, prefix="/api/products", tags=["produc
 app.include_router(routes_pivots.router, prefix="/api/pivots", tags=["pivots"])
 app.include_router(routes_review.router, prefix="/api/review", tags=["review"])
 app.include_router(routes_llm_runs.router, prefix="/api/llm-runs", tags=["llm-runs"])
+
+
+@app.on_event("startup")
+def start_scheduled_refresh() -> None:
+    ScheduledRefreshService.start_background_loop()
+
+
+@app.on_event("shutdown")
+def stop_scheduled_refresh() -> None:
+    ScheduledRefreshService.stop_background_loop()
 
 
 @app.get("/health")

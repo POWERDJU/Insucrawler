@@ -11,9 +11,8 @@
 ## Classification Mode
 
 - `primary_only`: 상품 1개는 대표 보험종류 기준으로 1회 집계한다.
-- `include_secondary`: 대표+보조분류를 포함한다. 상품 수는 반드시 `COUNT(DISTINCT product_id)` 의미로 계산한다.
 
-대시보드의 상품 비교표 조회는 항상 `include_secondary`를 사용한다. 보조분류 포함으로 같은 상품이 여러 상품군 조건에 걸릴 수 있으므로 `product_count`는 모든 base에서 `product_id` distinct 기준을 유지한다.
+보조 보종군은 더 이상 저장/조회하지 않는다. 이전 API 호환을 위해 `classification_mode="include_secondary"` 값이 들어와도 서비스는 `primary_only`로 처리한다. `product_count`는 모든 base에서 `product_id` distinct 기준을 유지한다.
 
 ## 중복 집계 방지
 
@@ -37,7 +36,7 @@
 
 화면에서 보내는 `custom_rows`는 `["company_name", "product_type_name"]`, `custom_columns`는 항상 `[]`이다. `pivot_result`는 기존 API 호환을 위해 계속 반환하지만 화면에는 표시하지 않는다.
 
-상품 비교표 Excel export는 `/api/dashboard/export`에서 제공한다. 동일한 필터 조건으로 상품별 기본정보, 상품특성, 요약, 주요보장, 판매실적, 관련기사 제목을 상품 1행 기준의 가로형 비교표로 내려준다. 반복 grain인 주요보장, 판매실적, 관련기사는 `주요보장1`, `주요보장2`처럼 번호가 붙은 컬럼으로 펼친다. 다운로드 파일에는 보조 보종군, 근거/설명, confidence, 검수필요, 관련 URL을 포함하지 않는다.
+상품 비교표 Excel export는 `/api/dashboard/export`에서 제공한다. 동일한 필터 조건으로 상품별 기본정보, 상품특성, 요약, 주요보장, 판매실적, 관련기사 제목을 상품 1행 기준의 가로형 비교표로 내려준다. 반복 grain인 주요보장, 판매실적, 관련기사는 `주요보장1`, `주요보장2`처럼 번호가 붙은 컬럼으로 펼친다. 다운로드 파일에는 근거/설명, confidence, 검수필요, 관련 URL을 포함하지 않는다.
 
 대시보드 내부 기본 pivot base는 `product`이며, 직접 피벗 API를 호출하는 사용자는 기존처럼 `coverage`, `sales` base를 사용할 수 있다.
 

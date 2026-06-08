@@ -28,14 +28,17 @@ from app.llm.schemas import extraction_json_schema, verification_json_schema
 from app.services.llm_cache_service import LLMCacheService
 from app.services.llm_cost_service import LLMCostService
 from app.services.llm_queue_service import LLMQueueService
+from app.services.article_eligibility_filter_service import ArticleEligibilityFilterService
 from app.services.multi_company_article_filter_service import MultiCompanyArticleFilterService
 from app.services.product_attribution_guard_service import ProductAttributionGuardService
 from app.services.product_candidate_cluster_service import ProductCandidateClusterService
 from app.services.product_canonicalization_service import ProductCanonicalizationService, product_core_key_for_keyword
+from app.services.product_final_adjudication_service import ProductFinalAdjudicationService
+from app.services.final_adjudication_provider_factory import build_final_adjudication_provider
+from app.services.sales_metric_validation_service import SalesMetricValidationService
 from app.services.screening_service import ScreeningResult, ScreeningService
 from app.services.snippet_service import SnippetService
 from app.utils.hashing import sha256_text
-from app.normalizers.product_name_normalizer import validate_product_name_before_save
 
 
 SCHEMA_VERSION = "2026-05-26-v1"
@@ -64,13 +67,11 @@ class ExtractService:
         article = db.get(FactArticle, article_id)
         if not article:
             raise ValueError(f"Article not found: {article_id}")
-        if not article.multi_company_company_names_json and not bool(article.multi_company_article_yn):
-            MultiCompanyArticleFilterService().mark_article(db, article)
-        if bool(article.multi_company_article_yn):
-            article.extraction_status = "excluded_multi_company"
-            article.extraction_exclusion_reason = "multiple insurer companies detected in article"
+        decision = ArticleEligibilityFilterService().classify_article(db, article)
+        if not decision.is_eligible:
+            ArticleEligibilityFilterService().mark_article(db, article, decision)
             db.commit()
-            return {"status": "excluded_multi_company", "article_id": article_id, "product_ids": []}
+            return {"status": "excluded_article_eligibility", "article_id": article_id, "product_ids": [], "reason": decision.exclusion_reason}
         screening = self.screening_service.screen_article(db, article)
         if not screening.llm_required_yn and env_bool("LLM_SKIP_LOW_RELEVANCE", True):
             article.extraction_status = "screened_skip"
@@ -153,15 +154,14 @@ class ExtractService:
         article = db.get(FactArticle, article_id)
         if not article:
             raise ValueError(f"Article not found: {article_id}")
-        if not article.multi_company_company_names_json and not bool(article.multi_company_article_yn):
-            MultiCompanyArticleFilterService().mark_article(db, article)
-        if bool(article.multi_company_article_yn):
-            article.extraction_status = "excluded_multi_company"
-            article.extraction_exclusion_reason = "multiple insurer companies detected in article"
+        decision = ArticleEligibilityFilterService().classify_article(db, article)
+        if not decision.is_eligible:
+            ArticleEligibilityFilterService().mark_article(db, article, decision)
             db.flush()
             return {
-                "status": "excluded_multi_company",
+                "status": "excluded_article_eligibility",
                 "article_id": article_id,
+                "reason": decision.exclusion_reason,
                 "llm_queue_id": None,
             }
         screening = self.screening_service.screen_article(db, article)
@@ -620,15 +620,21 @@ class ExtractService:
         product_ids: list[int] = []
         classifier = ProductTypeClassifier()
         attribution_guard = ProductAttributionGuardService()
+        sales_metric_validator = SalesMetricValidationService()
+        product_final_adjudication = ProductFinalAdjudicationService(provider=build_final_adjudication_provider())
         product_plans = self.canonicalization_service.plan_extraction_products(extraction.products, source_text)
         plans_by_index = {plan.index: plan for plan in product_plans}
         first_seen_month = None
         article = None
         if article_id:
             article = db.get(FactArticle, article_id)
+            if article:
+                decision = ArticleEligibilityFilterService().classify_article(db, article)
+                if not decision.is_eligible:
+                    ArticleEligibilityFilterService().mark_article(db, article, decision)
+                    db.flush()
+                    return []
             if article and bool(article.multi_company_article_yn):
-                article.extraction_status = "excluded_multi_company"
-                article.extraction_exclusion_reason = "multiple insurer companies detected in article"
                 db.flush()
                 return []
             if article and article.pub_date:
@@ -661,17 +667,39 @@ class ExtractService:
                 raw_candidate = canonical_name
             if not raw_candidate or is_negative_product_name(raw_candidate):
                 continue
-            product_name_validation = validate_product_name_before_save(
-                raw_candidate,
-                article_title=article.title if article else None,
-                context_text=source_text,
-            )
-            if not product_name_validation.accepted:
-                continue
-            raw_candidate = product_name_validation.cleaned_name
             primary_llm = product.product_type_classification.primary_product_type
-            rule = classifier.classify(canonical_name or identity.raw_product_name or identity.normalized_product_name_candidate)
-            primary_code = rule.primary.code if rule.primary.code != "UNKNOWN" else primary_llm.code
+            alias_names_for_final = list(dict.fromkeys([plan.raw_name, *plan.alias_names])) if plan else []
+            final_decision = product_final_adjudication.adjudicate(
+                db,
+                product_final_adjudication.build_input(
+                    db,
+                    product_name=raw_candidate,
+                    company_name=identity.company_name_candidate or identity.company_name_raw,
+                    product_type_code=primary_llm.code,
+                    release_year_month=identity.release_year_month,
+                    release_year_month_basis=identity.release_year_month_basis,
+                    partner_company_name=plan.partner_company_name if plan else None,
+                    partner_role="distribution_partner" if plan and plan.partner_company_name else None,
+                    partner_context_summary=plan.partner_context_summary if plan else None,
+                    candidate_type=plan.candidate_type if plan else None,
+                    article=article,
+                    context_text=source_text,
+                    aliases=alias_names_for_final,
+                ),
+            )
+            if final_decision.decision != "accept":
+                continue
+            raw_candidate = final_decision.canonical_product_name or raw_candidate
+            adjudicated_company_name = final_decision.company_name or identity.company_name_candidate or identity.company_name_raw
+            adjudicated_release_year_month = final_decision.release_year_month or identity.release_year_month
+            adjudicated_release_year_month_basis = final_decision.release_year_month_basis or identity.release_year_month_basis
+            adjudicated_partner_company_name = (
+                final_decision.partner_company_name if final_decision.partner_company_name is not None else (plan.partner_company_name if plan else None)
+            )
+            adjudicated_partner_role = final_decision.partner_role or "distribution_partner"
+            rule = classifier.classify(raw_candidate)
+            adjudicated_product_type_code = final_decision.product_type_code if final_decision.product_type_code and final_decision.product_type_code != "UNKNOWN" else None
+            primary_code = rule.primary.code if rule.primary.code != "UNKNOWN" else (adjudicated_product_type_code or primary_llm.code)
             if primary_code == "UNKNOWN":
                 continue
             proposed_status = "active" if plan and plan.candidate_type in {"official_name", "launch_name"} else "provisional"
@@ -679,7 +707,7 @@ class ExtractService:
                 db,
                 article=article,
                 product_name=raw_candidate,
-                llm_company_candidate=identity.company_name_candidate or identity.company_name_raw,
+                llm_company_candidate=adjudicated_company_name,
                 source_text=source_text,
                 proposed_status=proposed_status,
             )
@@ -689,11 +717,11 @@ class ExtractService:
                 db,
                 {
                     "raw_product_name": identity.raw_product_name or identity.normalized_product_name_candidate or canonical_name or "unknown",
-                    "normalized_product_name": canonical_name or identity.normalized_product_name_candidate or identity.raw_product_name or "unknown",
-                    "company_name": guard_result.resolved_company_name or identity.company_name_candidate or identity.company_name_raw,
+                    "normalized_product_name": raw_candidate,
+                    "company_name": guard_result.resolved_company_name or adjudicated_company_name,
                     "insurance_type": identity.insurance_type,
-                    "release_year_month": identity.release_year_month,
-                    "release_year_month_basis": identity.release_year_month_basis,
+                    "release_year_month": adjudicated_release_year_month,
+                    "release_year_month_basis": adjudicated_release_year_month_basis,
                     "first_seen_month": first_seen_month,
                     "primary_product_type_code": primary_code,
                     "confidence_total": product.confidence.total(),
@@ -702,10 +730,10 @@ class ExtractService:
                     "article_id": article_id,
                     "source_type": "article" if article_id else "manual_text",
                     "context_text": guard_result.local_window or source_text,
-                    "partner_company_name": plan.partner_company_name if plan else None,
+                    "partner_company_name": adjudicated_partner_company_name,
                     "partner_context_summary": plan.partner_context_summary if plan else None,
-                    "partner_role": "distribution_partner",
-                    "partner_confidence": 0.85 if plan and plan.partner_company_name else 0.0,
+                    "partner_role": adjudicated_partner_role,
+                    "partner_confidence": 0.85 if adjudicated_partner_company_name else 0.0,
                 },
                 allow_unknown_company=False,
             )
@@ -719,9 +747,9 @@ class ExtractService:
                 normalized_product_name_candidate=identity.normalized_product_name_candidate or observed_name,
                 product_core_key=product_row.product_core_key or observed_core_key,
                 company_name_raw=identity.company_name_candidate or identity.company_name_raw,
-                partner_company_name=plan.partner_company_name if plan else None,
+                partner_company_name=adjudicated_partner_company_name,
                 product_type_code=primary_code,
-                release_year_month=identity.release_year_month,
+                release_year_month=adjudicated_release_year_month,
                 observation_context_text=source_text,
                 candidate_type=plan.candidate_type if plan else "unknown",
                 confidence=product.confidence.total(),
@@ -748,9 +776,9 @@ class ExtractService:
                             normalized_product_name_candidate=self.canonicalization_service.canonical_name_from_raw(alias_name),
                             product_core_key=product_core_key_for_keyword(alias_name),
                             company_name_raw=identity.company_name_candidate or identity.company_name_raw,
-                            partner_company_name=plan.partner_company_name,
+                            partner_company_name=adjudicated_partner_company_name,
                             product_type_code=primary_code,
-                            release_year_month=identity.release_year_month,
+                            release_year_month=adjudicated_release_year_month,
                             observation_context_text=source_text,
                             candidate_type=plan.candidate_type,
                             confidence=product.confidence.total(),
@@ -768,36 +796,6 @@ class ExtractService:
                 },
                 article_id=article_id,
             )
-            for secondary in product.product_type_classification.secondary_product_types:
-                if secondary.code != primary_code:
-                    repository.add_type_assignment(
-                        db,
-                        product_row.product_id,
-                        {
-                            "product_type_code": secondary.code,
-                            "assignment_role": "secondary",
-                            "classification_basis": secondary.basis,
-                            "evidence_text": secondary.evidence_text,
-                            "confidence": secondary.confidence,
-                            "needs_human_review": False,
-                        },
-                        article_id=article_id,
-                    )
-            for secondary in rule.secondary:
-                if secondary.code != primary_code:
-                    repository.add_type_assignment(
-                        db,
-                        product_row.product_id,
-                        {
-                            "product_type_code": secondary.code,
-                            "assignment_role": "secondary",
-                            "classification_basis": "rule",
-                            "evidence_text": secondary.evidence_text,
-                            "confidence": secondary.confidence,
-                            "needs_human_review": False,
-                        },
-                        article_id=article_id,
-                    )
             features = product.structured_features.model_dump()
             features["evidence_text"] = product.evidence.feature_evidence
             features["confidence"] = product.confidence.features
@@ -810,8 +808,21 @@ class ExtractService:
             repository.add_narrative_insight(db, product_row.product_id, insight, article_id=article_id)
             for coverage in product.major_coverages:
                 repository.add_major_coverage(db, product_row.product_id, coverage.model_dump(), article_id=article_id)
+            alias_names_for_sales = []
+            if plan:
+                alias_names_for_sales = list(dict.fromkeys([plan.raw_name, *plan.alias_names]))
             for metric in product.sales_metrics:
-                repository.add_sales_metric(db, product_row.product_id, metric.model_dump(), article_id=article_id)
+                metric_dict = metric.model_dump()
+                metric_decision = sales_metric_validator.validate(
+                    metric_dict,
+                    product_name=raw_candidate,
+                    aliases=alias_names_for_sales,
+                    context_text=source_text,
+                )
+                if not metric_decision.accepted:
+                    continue
+                metric_dict["needs_human_review"] = bool(metric_dict.get("needs_human_review")) or metric_decision.needs_review
+                repository.add_sales_metric(db, product_row.product_id, metric_dict, article_id=article_id)
             if article_id:
                 repository.link_product_article(
                     db,

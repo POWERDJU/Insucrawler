@@ -13,6 +13,7 @@ from app.extractors.product_launch_candidate import extract_launch_product_candi
 from app.normalizers.product_name_normalizer import normalize_product_name, normalize_product_name_core, product_core_key_candidates
 from app.services.screening_service import ScreeningResult
 from app.services.company_attribution_service import CompanyAttributionService
+from app.services.article_eligibility_filter_service import ArticleEligibilityFilterService
 from app.services.multi_company_article_filter_service import MultiCompanyArticleFilterService
 from app.services.product_attribution_guard_service import ProductAttributionGuardService
 from app.services.product_company_eligibility import is_product_news_eligible_company
@@ -26,11 +27,9 @@ class ProductCandidateClusterService:
         screening: ScreeningResult | None = None,
         snippets: list[Any] | None = None,
     ) -> FactProductCandidateCluster | None:
-        if not article.multi_company_company_names_json and not bool(article.multi_company_article_yn):
-            result = MultiCompanyArticleFilterService().mark_article(db, article)
-            if result.is_multi_company:
-                return None
-        if bool(article.multi_company_article_yn):
+        decision = ArticleEligibilityFilterService().classify_article(db, article)
+        if not decision.is_eligible:
+            ArticleEligibilityFilterService().mark_article(db, article, decision)
             return None
         local_text = "\n".join(part for part in [article.description, *[s.snippet_text for s in snippets or []]] if part)
         text = "\n".join(part for part in [article.title, local_text] if part)

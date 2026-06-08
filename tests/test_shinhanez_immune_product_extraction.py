@@ -145,15 +145,6 @@ def test_shinhanez_immune_product_is_saved_after_reconciliation(db_session):
     assert product["company_name_normalized"] == "신한EZ손해보험"
     assert product["insurance_type"] == "손해보험"
 
-    assignment_codes = {
-        row[0]
-        for row in db_session.execute(
-            text("SELECT product_type_code FROM fact_product_type_assignment WHERE product_id = :product_id"),
-            {"product_id": product_id},
-        ).all()
-    }
-    assert "SPECIFIC_DISEASE" in assignment_codes
-
     audits = db_session.execute(
         text(
             """

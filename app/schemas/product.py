@@ -11,7 +11,6 @@ class ProductSearchResult(BaseModel):
     insurance_type: str | None = None
     release_year_month: str | None = None
     primary_product_type: str | None = None
-    secondary_product_types: list[str] = []
     coverage_summary: str | None = None
     major_coverage_count: int = 0
     article_count: int = 0
@@ -21,7 +20,6 @@ class ProductSearchResult(BaseModel):
 
 class ManualTypeAssignmentRequest(BaseModel):
     product_type_code: str
-    assignment_role: str = "manual"
     evidence_text: str | None = None
     confidence: float = 1.0
 

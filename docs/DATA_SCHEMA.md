@@ -25,7 +25,6 @@
 - `dim_product`
 - `dim_product_alias`
 - `dim_product_type`
-- `fact_product_type_assignment`
 - `fact_article`
 - `fact_product_article`
 - `fact_product_structured_feature`

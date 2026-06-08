@@ -31,7 +31,7 @@ class MultiCompanyExtractionCleanupService:
                            JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
                            WHERE clean_pa.product_id = p.product_id
                              AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
-                             AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+                             AND COALESCE(clean_pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                          )
                          THEN 1 ELSE 0
                        END AS product_has_non_multi_company_sources
@@ -186,7 +186,7 @@ class MultiCompanyExtractionCleanupService:
                     JOIN fact_article a ON a.article_id = pa.article_id
                     WHERE pa.product_id = :product_id
                       AND COALESCE(a.multi_company_article_yn, 0) = 0
-                      AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                      AND COALESCE(pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                     LIMIT 1
                     """
                 ),

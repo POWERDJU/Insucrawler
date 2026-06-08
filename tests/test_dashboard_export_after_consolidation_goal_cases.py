@@ -57,14 +57,13 @@ def test_dashboard_export_workbook_contains_canonical_rows_and_aliases(db_sessio
     headers = [str(value or "") for value in rows[0]]
     body = rows[1:]
 
-    assert "canonical_product_id" in headers
-    assert "product_status" in headers
+    assert "canonical_product_id" not in headers
+    assert "product_status" not in headers
+    assert "상품명 alias 목록" not in headers
     joined_rows = ["\n".join(str(value or "") for value in row) for row in body]
 
     assert len([row for row in joined_rows if TONTINE in row]) == 1
     assert len([row for row in joined_rows if SIGNATURE in row and "4.0" in row]) == 1
     assert len([row for row in joined_rows if HEALTH_REFUND in row or REFUND in row]) == 1
     assert len([row for row in joined_rows if SURGERY in row]) == 1
-    assert all("merged" not in str(row[headers.index("product_status")] or "") for row in body)
-    assert any(TONTINE_ALIAS in row for row in joined_rows)
-    assert any(SIGNATURE_ALIAS in row for row in joined_rows)
+    assert all("merged" not in row for row in joined_rows)

@@ -96,7 +96,7 @@ def test_dashboard_keyword_search_matches_product_alias_summary_coverage_and_art
     for keyword in ["키즈폰", "어린이", "미니 보험", "미니보험", "상해"]:
         result = service.query(db_session, _request(keyword=keyword))
         assert result["summary"]["product_count"] == 1
-        assert result["products"][0]["normalized_product_name"] == "키즈폰 어린이 미니보험"
+        assert result["products"][0]["normalized_product_name"] == "LG유플러스 키즈폰 고객 전용 미니보험"
 
 
 def test_dashboard_excel_export_uses_same_keyword_filter_and_alias_columns(db_session):
@@ -127,12 +127,11 @@ def test_dashboard_excel_export_uses_same_keyword_filter_and_alias_columns(db_se
     headers = [cell.value for cell in sheet[1]]
     rows = [[cell.value for cell in row] for row in sheet.iter_rows(min_row=2)]
 
-    assert "상품명 alias 목록" in headers
-    assert "canonical_product_id" in headers
+    assert "상품명 alias 목록" not in headers
+    assert "canonical_product_id" not in headers
     assert len(rows) == 1
     row = dict(zip(headers, rows[0]))
-    assert row["상품명"] == "키즈폰 어린이 미니보험"
-    assert "미니 보험" in (row["상품명 alias 목록"] or "")
+    assert row["상품명"] == "LG유플러스 키즈폰 고객 전용 미니보험"
 
     filter_sheet = workbook["적용 필터"]
     filter_rows = {row[0].value: row[1].value for row in filter_sheet.iter_rows(min_row=2)}

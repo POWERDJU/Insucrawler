@@ -29,12 +29,14 @@ class MonthlyNewProductService:
         include_review: bool = False,
         include_excluded_policy_products: bool = False,
     ) -> dict[str, Any]:
-        target_month = self._normalize_year_month(year_month) or self._current_year_month()
+        explicit_month = self._normalize_year_month(year_month)
+        target_month = explicit_month or self._current_year_month()
+        target_months = [target_month] if explicit_month else self._current_and_previous_months(target_month)
         normalized_insurance_type = None if insurance_type in {None, "", "전체"} else insurance_type
         bounded_limit = max(1, min(int(limit or 10), 50))
         products = self._query_products(
             db,
-            target_month,
+            target_months,
             bounded_limit,
             normalized_insurance_type,
             include_review,
@@ -42,14 +44,16 @@ class MonthlyNewProductService:
         )
         fallback_used = False
         display_month = target_month
+        display_months = target_months
         if not products and fallback_latest:
             latest_month = self._latest_release_month(db, normalized_insurance_type, include_review, include_excluded_policy_products)
             if latest_month:
                 display_month = latest_month
+                display_months = [latest_month]
                 fallback_used = latest_month != target_month
                 products = self._query_products(
                     db,
-                    latest_month,
+                    [latest_month],
                     bounded_limit,
                     normalized_insurance_type,
                     include_review,
@@ -59,6 +63,8 @@ class MonthlyNewProductService:
         return {
             "year_month": display_month,
             "display_year_month": self._display_year_month(display_month),
+            "months": display_months,
+            "display_period": ", ".join(display_months),
             "fallback_used": fallback_used,
             "items": items,
         }
@@ -66,7 +72,7 @@ class MonthlyNewProductService:
     def _query_products(
         self,
         db: Session,
-        year_month: str,
+        year_month: str | list[str],
         limit: int,
         insurance_type: str | None,
         include_review: bool,
@@ -93,12 +99,12 @@ class MonthlyNewProductService:
                      JOIN fact_article a ON a.article_id = pa.article_id
                      WHERE pa.product_id = p.product_id
                        AND COALESCE(a.multi_company_article_yn, 0) = 0
-                       AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                       AND COALESCE(pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                    ) AS latest_article_pub_date
             FROM dim_product p
             LEFT JOIN dim_company c ON c.company_id = p.company_id
             LEFT JOIN dim_product_type pt ON pt.product_type_code = p.primary_product_type_code
-            WHERE p.release_year_month = :year_month
+            WHERE p.release_year_month IN ({month_placeholders})
               AND TRIM(COALESCE(p.normalized_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(p.raw_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(p.normalized_product_name, '')) NOT LIKE :rider_suffix
@@ -110,15 +116,21 @@ class MonthlyNewProductService:
                   JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
                   WHERE clean_pa.product_id = p.product_id
                     AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
-                    AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+                    AND COALESCE(clean_pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
               )
         """
+        month_values = year_month if isinstance(year_month, list) else [year_month]
+        month_placeholders = []
         params: dict[str, Any] = {
-            "year_month": year_month,
             "limit": limit,
             "special_clause_suffix": "%특별약관",
             "rider_suffix": "%특약",
         }
+        for idx, month_value in enumerate(month_values):
+            key = f"month_{idx}"
+            month_placeholders.append(f":{key}")
+            params[key] = month_value
+        sql = sql.format(month_placeholders=",".join(month_placeholders))
         if not include_excluded_policy_products:
             exclusion_sql, exclusion_params = product_policy_exclusion_sql("p", param_prefix="monthly_excluded")
             sql += exclusion_sql
@@ -162,7 +174,7 @@ class MonthlyNewProductService:
                   JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
                   WHERE clean_pa.product_id = p.product_id
                     AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
-                    AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+                    AND COALESCE(clean_pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
               )
               AND TRIM(COALESCE(p.normalized_product_name, '')) NOT LIKE :special_clause_suffix
               AND TRIM(COALESCE(p.raw_product_name, '')) NOT LIKE :special_clause_suffix
@@ -225,7 +237,7 @@ class MonthlyNewProductService:
                     JOIN fact_article a ON a.article_id = pa.article_id
                     WHERE pa.product_id = :product_id
                       AND COALESCE(a.multi_company_article_yn, 0) = 0
-                      AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                      AND COALESCE(pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                     ORDER BY a.pub_date ASC, a.article_id ASC
                     """
                 ),
@@ -309,6 +321,12 @@ class MonthlyNewProductService:
     @staticmethod
     def _current_year_month() -> str:
         return datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m")
+
+    @staticmethod
+    def _current_and_previous_months(year_month: str) -> list[str]:
+        year, month = [int(part) for part in year_month.split("-", 1)]
+        previous = f"{year - 1}-12" if month == 1 else f"{year:04d}-{month - 1:02d}"
+        return [year_month, previous]
 
     @staticmethod
     def _display_year_month(value: str | None) -> str:

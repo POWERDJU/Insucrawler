@@ -20,7 +20,6 @@ from app.db.models import (
     FactProductMajorCoverage,
     FactProductNarrativeInsight,
     FactProductStructuredFeature,
-    FactProductTypeAssignment,
     FactSalesMetricStructured,
 )
 from app.db.repository import company_aliases_for_company, record_product_alias
@@ -178,7 +177,6 @@ def merge_product(db, canonical: DimProduct, duplicate: DimProduct) -> None:
             link.product_id = canonical.product_id
 
     for model in [
-        FactProductTypeAssignment,
         FactProductStructuredFeature,
         FactProductNarrativeInsight,
         FactProductMajorCoverage,

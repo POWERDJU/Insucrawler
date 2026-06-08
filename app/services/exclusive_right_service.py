@@ -25,6 +25,8 @@ from app.db.models import (
 from app.extractors.exclusive_right_schema import ExclusiveRightExtractionResult, validate_exclusive_right_payload
 from app.normalizers.company_normalizer import CompanyMatch, CompanyNormalizer
 from app.services.company_attribution_service import CompanyAttributionService
+from app.services.exclusive_right_final_adjudication_service import ExclusiveRightFinalAdjudicationService
+from app.services.final_adjudication_provider_factory import build_final_adjudication_provider
 from app.services.company_logo_service import CompanyLogoService
 from app.services.exclusive_right_local_context import (
     fallback_earliest_article_month,
@@ -40,6 +42,8 @@ from app.services.exclusive_right_local_context import (
 )
 from app.utils.text import compact_spaces, normalize_search_key
 from app.services.llm_queue_service import LLMQueueService
+from app.services.article_eligibility_filter_service import ArticleEligibilityFilterService
+from app.services.product_company_eligibility import is_product_news_eligible_company
 from app.services.screening_service import ScreeningService
 from app.services.snippet_service import SnippetService
 
@@ -127,7 +131,41 @@ class ExclusiveRightService:
             article_description=article.description if article else None,
             product_or_subject_name=subject_name,
         )
+        company_row = db.get(DimCompany, resolved.company_id) if resolved.company_id else None
+        ineligible_company = bool(resolved.company_id and not is_product_news_eligible_company(company_row))
+        if ineligible_company:
+            resolved.needs_review = True
         exclusivity_months = self._nullable_int(payload.get("exclusivity_months"))
+        final_adjudication_service = ExclusiveRightFinalAdjudicationService(provider=build_final_adjudication_provider())
+        final_decision = final_adjudication_service.adjudicate(
+            db,
+            final_adjudication_service.build_input(
+                db,
+                subject_name=subject_name,
+                company_name=resolved.company_name_normalized or payload.get("company_name_raw") or payload.get("company_name_candidate"),
+                acquired_year_month=acquired_year_month,
+                exclusivity_months=exclusivity_months,
+                article=article,
+                context_text=context_text,
+                evidence_text=payload.get("evidence_text"),
+            ),
+        )
+        if final_decision.decision in {"reject", "ineligible_article"}:
+            self._save_review_observation(
+                db,
+                payload,
+                article=article,
+                status_candidate="rejected",
+                full_text=full_text,
+                review_reason=final_decision.reason,
+            )
+            db.commit()
+            raise ValueError(f"exclusive right rejected by final adjudication: {final_decision.reason}")
+        if final_decision.subject_name:
+            subject_name = final_decision.subject_name
+            subject_core_key = normalize_search_key(subject_name)
+        if final_decision.acquired_year_month:
+            acquired_year_month = final_decision.acquired_year_month
         needs_review = (
             bool(payload.get("needs_review"))
             or resolved.needs_review
@@ -135,6 +173,8 @@ class ExclusiveRightService:
             or validation.needs_review
             or not is_valid_year_month(acquired_year_month)
             or exclusivity_months is None
+            or ineligible_company
+            or final_decision.decision != "accept"
         )
         confidence_total = float(payload.get("confidence_total") or payload.get("confidence") or 0.0)
         exclusive_right = self._find_canonical(
@@ -531,7 +571,13 @@ class ExclusiveRightService:
         queue_service = LLMQueueService()
         candidate_count = self._candidate_count(db, date_from=date_from, date_to=date_to, crawl_job_id=crawl_job_id)
         queued_count = skipped_existing_queue_count = skipped_existing_observation_count = skipped_no_snippet_count = 0
+        skipped_ineligible_count = 0
         for article in articles:
+            decision = ArticleEligibilityFilterService().classify_article(db, article)
+            if not decision.is_eligible:
+                ArticleEligibilityFilterService().mark_article(db, article, decision)
+                skipped_ineligible_count += 1
+                continue
             if self._article_has_observation(db, article.article_id):
                 skipped_existing_observation_count += 1
                 continue
@@ -570,7 +616,8 @@ class ExclusiveRightService:
             "saved": 0,
             "batch_eligible": queued_count if batch_eligible else 0,
             "batch_eligible_count": queued_count if batch_eligible else 0,
-            "skipped_count": skipped_existing_queue_count + skipped_existing_observation_count + skipped_no_snippet_count,
+            "skipped_count": skipped_existing_queue_count + skipped_existing_observation_count + skipped_no_snippet_count + skipped_ineligible_count,
+            "skipped_ineligible_count": skipped_ineligible_count,
             "skipped_existing_queue_count": skipped_existing_queue_count,
             "skipped_existing_observation_count": skipped_existing_observation_count,
             "skipped_no_snippet_count": skipped_no_snippet_count,
@@ -653,6 +700,17 @@ class ExclusiveRightService:
     ) -> dict[str, Any]:
         result = extraction if isinstance(extraction, ExclusiveRightExtractionResult) else validate_exclusive_right_payload(extraction)
         article = db.get(FactArticle, article_id) if article_id else None
+        if article:
+            decision = ArticleEligibilityFilterService().classify_article(db, article)
+            if not decision.is_eligible:
+                ArticleEligibilityFilterService().mark_article(db, article, decision)
+                return {
+                    "status": "excluded_article_eligibility",
+                    "saved_count": 0,
+                    "observation_count": 0,
+                    "skipped_count": len(result.exclusive_rights),
+                    "llm_run_id": llm_run_id,
+                }
         if article and bool(article.multi_company_article_yn):
             return {
                 "status": "excluded_multi_company",

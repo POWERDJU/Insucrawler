@@ -97,10 +97,10 @@ def test_product_type_filter_primary(db_session):
     assert len(result) == 1
 
 
-def test_product_type_filter_secondary(db_session):
+def test_product_type_filter_ignores_secondary_flag(db_session):
     seed_search_product(db_session)
     result = SearchService().search_products(db_session, product_type_code="SIMPLIFIED_IMPAIRED", include_secondary_types=True, include_review=False)
-    assert len(result) == 1
+    assert len(result) == 0
 
 
 def test_product_search_hides_release_month_outside_visible_period(db_session):

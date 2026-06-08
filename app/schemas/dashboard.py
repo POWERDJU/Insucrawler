@@ -12,7 +12,7 @@ class DashboardQueryRequest(BaseModel):
     insurance_type: str = "전체"
     company_names: list[str] = Field(default_factory=list)
     product_type_codes: list[str] = Field(default_factory=list)
-    classification_mode: Literal["primary_only", "include_secondary"] = "include_secondary"
+    classification_mode: Literal["primary_only", "include_secondary"] = "primary_only"
     pivot_preset: str = "custom"
     custom_rows: list[str] = Field(default_factory=list)
     custom_columns: list[str] = Field(default_factory=list)

@@ -40,7 +40,7 @@ class SearchService:
                      JOIN fact_article ar_count ON ar_count.article_id = pa.article_id
                      WHERE pa.product_id = s.product_id
                        AND COALESCE(ar_count.multi_company_article_yn, 0) = 0
-                       AND COALESCE(pa.extraction_status, 'saved') != 'excluded_multi_company'
+                       AND COALESCE(pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                    ) AS article_count
             FROM vw_product_search s
             WHERE 1=1
@@ -88,7 +88,7 @@ class SearchService:
                     JOIN fact_article clean_a ON clean_a.article_id = clean_pa.article_id
                     WHERE clean_pa.product_id = s.product_id
                       AND COALESCE(clean_a.multi_company_article_yn, 0) = 0
-                      AND COALESCE(clean_pa.extraction_status, 'saved') != 'excluded_multi_company'
+                      AND COALESCE(clean_pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                 )
                 OR NOT EXISTS (
                     SELECT 1 FROM fact_product_article any_pa WHERE any_pa.product_id = s.product_id
@@ -127,23 +127,13 @@ class SearchService:
                 params[key] = status
             sql += f" AND COALESCE(s.status_2024_2026, 'unknown') NOT IN ({','.join(placeholders)})"
         if product_type_code:
-            if include_secondary_types:
-                sql += """
-                    AND EXISTS (
-                        SELECT 1 FROM fact_product_type_assignment a
-                        WHERE a.product_id = s.product_id AND a.product_type_code = :product_type_code
-                    )
-                """
-            else:
-                sql += " AND s.primary_product_type_code = :product_type_code"
+            sql += " AND s.primary_product_type_code = :product_type_code"
             params["product_type_code"] = product_type_code
         sql += " ORDER BY s.confidence_total DESC, s.product_id DESC"
         rows = db.execute(text(sql), params).mappings().all()
         results: list[dict] = []
         for row in rows:
             item = dict(row)
-            secondary = item.get("secondary_product_types")
-            item["secondary_product_types"] = [part for part in secondary.split(",") if part] if secondary else []
             item["needs_review"] = bool(item["needs_review"])
             item["release_year_month"] = display_release_year_month(item.get("release_year_month"))
             results.append(item)

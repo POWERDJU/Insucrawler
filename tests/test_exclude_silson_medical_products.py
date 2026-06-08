@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 
 from openpyxl import load_workbook
 
+from app.db.models import FactArticle
 from app.db import repository
 from app.schemas.dashboard import DashboardQueryRequest
 from app.services.dashboard_service import DashboardService
 from app.services.ingestion_service import IngestionService
 from app.services.monthly_new_product_service import MonthlyNewProductService
 from app.services.search_service import SearchService
+from app.utils.hashing import article_dedup_hash
 
 
 def _request(**overrides):
@@ -22,7 +25,7 @@ def _request(**overrides):
 
 
 def _seed_product(db, *, raw_name: str, normalized_name: str, release_year_month: str = "2026-05"):
-    return IngestionService().upsert_structured_product(
+    product = IngestionService().upsert_structured_product(
         db,
         {
             "product": {
@@ -40,13 +43,32 @@ def _seed_product(db, *, raw_name: str, normalized_name: str, release_year_month
             ],
         },
     )
+    url = f"https://example.com/silson-test/{product.product_id}"
+    article = FactArticle(
+        source_api="test",
+        title=f"{normalized_name} 출시",
+        description=f"{normalized_name} 기사",
+        publisher="Test News",
+        url=url,
+        original_url=url,
+        pub_date=datetime(2026, 5, 1, 9, 0, 0),
+        query="test",
+        query_group="test",
+        content_hash=article_dedup_hash(url, f"{normalized_name} 출시", ""),
+        extraction_status="extracted",
+    )
+    db.add(article)
+    db.flush()
+    repository.link_product_article(db, product.product_id, article.article_id, confidence_total=0.9, needs_review=False)
+    db.commit()
+    return product
 
 
 def test_dashboard_query_excludes_silson_medical_names_and_aliases(db_session):
-    _seed_product(db_session, raw_name="무배당 실손의료보험", normalized_name="무배당 실손의료보험")
-    _seed_product(db_session, raw_name="OO 실손의료 보험", normalized_name="건강보험 A")
+    direct_excluded = _seed_product(db_session, raw_name="무배당 실손의료보험", normalized_name="무배당 실손의료보험")
+    spaced_excluded = _seed_product(db_session, raw_name="OO 실손의료 보험", normalized_name="건강보험 A")
     alias_product = _seed_product(db_session, raw_name="일반 건강보험", normalized_name="건강보험 B")
-    _seed_product(db_session, raw_name="실손보험", normalized_name="실손보험")
+    visible_silson = _seed_product(db_session, raw_name="실손보험", normalized_name="실손보험")
     repository.record_product_alias(
         db_session,
         alias_product,
@@ -60,14 +82,19 @@ def test_dashboard_query_excludes_silson_medical_names_and_aliases(db_session):
     result = DashboardService().query(db_session, _request())
     names = {item["normalized_product_name"] for item in result["products"]}
 
-    assert "무배당 실손의료보험" not in names
-    assert "건강보험 A" not in names
-    assert "건강보험 B" not in names
-    assert "실손보험" in names
+    assert direct_excluded.normalized_product_name not in names
+    assert spaced_excluded.normalized_product_name not in names
+    assert alias_product.normalized_product_name not in names
+    assert visible_silson.normalized_product_name in names
 
     included = DashboardService().query(db_session, _request(include_excluded_policy_products=True))
     included_names = {item["normalized_product_name"] for item in included["products"]}
-    assert {"무배당 실손의료보험", "건강보험 A", "건강보험 B", "실손보험"} <= included_names
+    assert {
+        direct_excluded.normalized_product_name,
+        spaced_excluded.normalized_product_name,
+        alias_product.normalized_product_name,
+        visible_silson.normalized_product_name,
+    } <= included_names
 
 
 def test_dashboard_export_and_monthly_board_exclude_silson_medical_products(db_session):

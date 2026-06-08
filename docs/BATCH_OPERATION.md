@@ -22,11 +22,14 @@ version/birth/mobile regression gate:
 
 ```powershell
 python scripts/run_product_version_birth_mobile_goal_check.py
+python scripts/run_signature_release_birth_coverage_goal_check.py
 ```
 
 It verifies version-aware Signature Women consolidation, birth-benefit component
 consolidation, version-compatible release-month selection, and shared PC/mobile
-coverage dedupe without crawling, reparsing, or calling Gemini/Qwen.
+coverage dedupe without crawling, reparsing, or calling Gemini/Qwen. The
+signature/release/birth/coverage script writes
+`docs/signature-release-birth-coverage-goal-result.md`.
 
 # Batch Operation
 
@@ -287,6 +290,26 @@ Multi-company article exclusion is applied at article/source level. It is not a 
 - `fact_article.multi_company_article_yn=true` prevents new `extract` and `exclusive_right_extract` queues.
 - Batch JSONL creation marks matching queues as `excluded_multi_company` and does not include them in provider input.
 - Batch import skips outputs whose target article is flagged multi-company.
+
+## Mixed Financial-Institution Roundup Guard
+
+The batch path also applies `ArticleEligibilityFilterService` before realtime extraction, queue creation, batch JSONL creation, and batch import. This guard is broader than insurer-only multi-company detection: it catches roundup articles where insurer product news is mixed with banks, securities firms, card companies, or non-insurance financial products such as deposits, loans, funds, ETFs, or index-linked deposits. It also catches bank/card-primary articles where insurance coverage/service is mentioned as an ancillary benefit rather than as the title's insurance product-launch subject.
+
+When the guard returns `multi_financial_institution_roundup`, only the source article evidence is excluded. Raw `fact_article` rows remain available for audit, and canonical products or exclusive-use-right events remain visible if they have another clean source article. If a product/event has only ineligible roundup evidence, cleanup marks it `rejected_ineligible_article_only` or equivalent excluded status instead of deleting it.
+
+Relevant deterministic cleanup commands:
+
+```powershell
+python scripts/cleanup_product_name_prefixes.py --dry-run
+python scripts/audit_article_eligibility.py --date-from 2026-01-01 --date-to 2026-05-31 --dry-run
+python scripts/cleanup_ineligible_article_product_extractions.py --dry-run
+python scripts/cleanup_ineligible_article_exclusive_rights.py --dry-run
+python scripts/requeue_batches_excluding_ineligible_articles.py --crawl-job-id 1 --dry-run
+```
+
+Run with `--apply` only after reviewing the CSV plan. These commands do not call Gemini/Qwen.
+
+Product-name prefix cleanup runs before save and during deterministic cleanup. It removes only leading Korean discourse connectors such as `한편`, `또한`, `아울러`, `다만`, `그러나`, and `물론`; uploaded Excel product names are used as regression fixtures only, never as a generated prefix dictionary.
 - Canonical products/events remain available when at least one non-multi-company source exists.
 - Only-multi-source canonical rows are marked `rejected_multi_company_only` and hidden from default dashboard/export views.
 
@@ -297,3 +320,77 @@ python scripts/audit_multi_company_articles.py --dry-run
 python scripts/cleanup_multi_company_product_extractions.py --dry-run
 python scripts/cleanup_multi_company_exclusive_rights.py --dry-run
 ```
+## Major Coverage Dedupe After Extraction
+
+Batch extraction stores raw major coverage rows. The generalized major coverage
+dedupe layer runs later in product detail API, dashboard rendering, and Excel
+export, so no extra LLM call is made while rendering or exporting. Use
+`scripts/audit_major_coverage_duplicates.py --dry-run` to inspect duplicate
+coverage groups without deleting source rows.
+
+## Contextual Extraction Quality Guards
+
+Batch import revalidates imported LLM JSON before active writes:
+
+- actual queue target crawl-job scope for articles and product clusters
+- source article eligibility
+- product-name quality after discourse-prefix cleanup
+- local company attribution and reinsurer/foreign-branch exclusion
+- sales metric evidence near the product name/alias
+- exclusive-right subject quality and future acquired-month review
+
+When a guard fails, the import skips active entity creation or marks a review
+observation instead of deleting raw article evidence. The final adjudication
+task types are `product_final_adjudication`,
+`exclusive_right_final_adjudication`, and `sales_metric_validation`.
+Live final adjudication is opt-in. With
+`ENABLE_FINAL_ADJUDICATION_LLM=true` and
+`FINAL_ADJUDICATION_PROVIDER=qwen`, risky product candidates are sent to Qwen
+with compact local context so it can accept/reject/review or correct the
+product name, release year-month, company attribution, and
+product-combination/partner fields before deterministic validators run again.
+
+## Scheduled Refresh and Full Qwen Review Batch Flow
+
+Scheduled refresh uses the same queue and batch guards as manual extraction.
+When enabled, the server checks the configured days of month at 09:00
+`Asia/Seoul`, creates a 5-day lookback crawl job, and uses
+`gemini-2.5-flash-lite` for 100-request extraction batches. It does not submit a
+second batch while a prepared/submitted/running/provider-completed batch exists
+for the same crawl job.
+
+The post-crawl pipeline step:
+
+1. Imports a provider-completed batch idempotently with final realtime Qwen
+   disabled during Gemini import.
+2. Enqueues all remaining saved product articles for the crawl job, repeating
+   `ExtractService.enqueue_articles_for_crawl_job(..., limit=1000)` until no
+   pending saved articles remain.
+3. Submits one `extract` batch with `limit=100`.
+4. After product extraction is complete, enqueues all exclusive-right candidates
+   and submits one `exclusive_right_extract` batch with `limit=100`.
+5. When no product/exclusive pending or running queues remain, runs rule-only
+   product consolidation and rule-only exclusive-right consolidation.
+6. Runs Qwen final adjudication chunks only if `ENABLE_FINAL_ADJUDICATION_LLM`
+   is true and the final adjudication provider is configured.
+
+The queue task types reserved for final review are
+`qwen_product_final_review`, `qwen_exclusive_right_final_review`,
+`qwen_article_eligibility_review`, `qwen_sales_metric_review`, and
+`qwen_coverage_dedupe_review`. Existing compact final adjudication services keep
+their provider task labels for backward-compatible cost/report history.
+
+Use:
+
+```powershell
+py -3 scripts/run_scheduled_refresh_goal_check.py --pipeline-step
+py -3 scripts/run_full_qwen_review_goal_check.py --date-from 2025-01-01 --date-to 2026-05-31
+```
+## Full Qwen Quality Review Rerun
+
+상품/배타적사용권 추출 오류가 발견되면 기존 batch import를 다시 돌리는 대신 `scripts/run_qwen_quality_review_for_current_data.py`로 현재 DB 전수 품질 리뷰를 재실행한다. 이 작업은 Gemini batch queue와 별개이며, 기존 `qwen_final_review` audit 이력을 스킵 기준으로 사용하지 않는다.
+
+- 기본 범위: `2025-01-01`부터 `2026-05-31`까지 저장된 상품과 배타적사용권 전체
+- audit task type: `qwen_product_quality_review`, `qwen_exclusive_right_quality_review`
+- Qwen context: 기사 제목, URL, 발행일, snippet/local window, 현재 추출 필드
+- apply 모드: rule hard gate로 명백한 제외 대상을 먼저 reject/review 처리하고, Qwen correction은 검증 통과 시 DB에 반영
