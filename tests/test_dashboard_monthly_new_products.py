@@ -20,6 +20,7 @@ def test_monthly_new_products_api_returns_items(db_session):
         assert response.status_code == 200
         payload = response.json()
         assert payload["year_month"] == "2026-05"
+        assert payload["random_sample"] is True
         assert len(payload["items"]) == 1
         assert payload["items"][0]["product_name"] == "월간 테스트 건강보험"
         assert payload["items"][0]["article_url"] == "https://example.com/monthly-product"
@@ -65,3 +66,4 @@ def test_dashboard_js_contains_monthly_board_behaviour():
     assert "focusin" in script
     assert "stopMonthlyBoardTimer" in script
     assert "insurance_type" in script
+    assert "sample_ts" in script

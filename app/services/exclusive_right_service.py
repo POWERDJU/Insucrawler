@@ -283,6 +283,7 @@ class ExclusiveRightService:
         include_review: bool = False,
         keyword: str | None = None,
         limit: int = 100,
+        random_sample: bool = False,
     ) -> list[dict[str, Any]]:
         query = db.query(FactExclusiveUseRight)
         query = self._apply_filters(
@@ -297,13 +298,27 @@ class ExclusiveRightService:
             include_review=include_review,
             keyword=keyword,
         )
-        rows = (
-            query.order_by(FactExclusiveUseRight.acquired_year_month.desc().nullslast(), FactExclusiveUseRight.exclusive_right_id.desc())
-            .limit(max(1, min(limit * 5, 1000)))
-            .all()
+        bounded_limit = max(1, min(limit, 500))
+        order_by = (
+            (text("RANDOM()"), FactExclusiveUseRight.exclusive_right_id.desc())
+            if random_sample
+            else (FactExclusiveUseRight.acquired_year_month.desc().nullslast(), FactExclusiveUseRight.exclusive_right_id.desc())
         )
+        rows = query.order_by(*order_by).limit(max(1, min(limit * 5, 1000))).all()
         public_rows = [row for row in rows if include_review or self._is_public_subject(row)]
-        return [self._list_item(row) for row in public_rows[: max(1, min(limit, 500))]]
+        if random_sample and len(public_rows) < bounded_limit:
+            seen_ids = {row.exclusive_right_id for row in public_rows}
+            fill_rows = (
+                query.order_by(FactExclusiveUseRight.acquired_year_month.desc().nullslast(), FactExclusiveUseRight.exclusive_right_id.desc())
+                .limit(1000)
+                .all()
+            )
+            public_rows.extend(
+                row
+                for row in fill_rows
+                if row.exclusive_right_id not in seen_ids and (include_review or self._is_public_subject(row))
+            )
+        return [self._list_item(row) for row in public_rows[:bounded_limit]]
 
     def detail(self, db: Session, exclusive_right_id: int) -> dict[str, Any] | None:
         row = db.get(FactExclusiveUseRight, exclusive_right_id)
@@ -346,6 +361,7 @@ class ExclusiveRightService:
         limit: int = 10,
         include_review: bool = False,
         fallback_latest: bool = True,
+        random_sample: bool = False,
     ) -> dict[str, Any]:
         fallback_used = False
         items = self.list_rights(
@@ -354,6 +370,7 @@ class ExclusiveRightService:
             months_back=months_back,
             include_review=include_review,
             limit=limit,
+            random_sample=random_sample,
         )
         if not items and fallback_latest:
             items = self.list_rights(
@@ -361,12 +378,14 @@ class ExclusiveRightService:
                 insurance_type=insurance_type,
                 include_review=include_review,
                 limit=limit,
+                random_sample=random_sample,
             )
             fallback_used = bool(items)
         return {
             "months_back": months_back,
             "display_period": f"최근 {months_back}개월",
             "fallback_used": fallback_used,
+            "random_sample": random_sample,
             "items": [
                 {
                     "exclusive_right_id": item["exclusive_right_id"],

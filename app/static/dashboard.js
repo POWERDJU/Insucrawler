@@ -231,6 +231,7 @@ async function loadMonthlyNewProducts() {
       limit: "12",
       fallback_latest: "true",
       include_review: "false",
+      sample_ts: Date.now().toString(),
     });
     const insuranceType = document.getElementById("insuranceType")?.value;
     if (insuranceType) params.set("insurance_type", insuranceType);
@@ -348,6 +349,7 @@ async function loadRecentExclusiveRights() {
       months_back: "12",
       limit: "12",
       include_review: "false",
+      sample_ts: Date.now().toString(),
     });
     const insuranceType = document.getElementById("insuranceType")?.value;
     if (insuranceType) params.set("insurance_type", insuranceType);

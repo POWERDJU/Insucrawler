@@ -29,6 +29,7 @@ class MonthlyNewProductService:
         insurance_type: str | None = None,
         include_review: bool = False,
         include_excluded_policy_products: bool = False,
+        random_sample: bool = False,
     ) -> dict[str, Any]:
         explicit_month = self._normalize_year_month(year_month)
         target_month = explicit_month or self._current_year_month()
@@ -42,6 +43,7 @@ class MonthlyNewProductService:
             normalized_insurance_type,
             include_review,
             include_excluded_policy_products,
+            random_sample,
         )
         fallback_used = False
         display_month = target_month
@@ -59,6 +61,7 @@ class MonthlyNewProductService:
                     normalized_insurance_type,
                     include_review,
                     include_excluded_policy_products,
+                    random_sample,
                 )
         items = [self._item(db, product) for product in products]
         return {
@@ -67,6 +70,7 @@ class MonthlyNewProductService:
             "months": display_months,
             "display_period": ", ".join(display_months),
             "fallback_used": fallback_used,
+            "random_sample": random_sample,
             "items": items,
         }
 
@@ -78,6 +82,7 @@ class MonthlyNewProductService:
         insurance_type: str | None,
         include_review: bool,
         include_excluded_policy_products: bool,
+        random_sample: bool,
     ) -> list[dict[str, Any]]:
         sql = """
             SELECT p.product_id,
@@ -147,13 +152,19 @@ class MonthlyNewProductService:
             params[key] = role
         placeholders = ",".join(f":excluded_role_{idx}" for idx in range(len(excluded_roles)))
         sql += f" AND COALESCE(c.company_role, '') NOT IN ({placeholders})"
-        sql += """
-            ORDER BY p.release_year_month DESC,
-                     latest_article_pub_date DESC,
-                     p.confidence_total DESC,
-                     p.product_id DESC
-            LIMIT :limit
-        """
+        if random_sample:
+            sql += """
+                ORDER BY RANDOM()
+                LIMIT :limit
+            """
+        else:
+            sql += """
+                ORDER BY p.release_year_month DESC,
+                         latest_article_pub_date DESC,
+                         p.confidence_total DESC,
+                         p.product_id DESC
+                LIMIT :limit
+            """
         return [dict(row) for row in db.execute(text(sql), params).mappings().all()]
 
     def _latest_release_month(

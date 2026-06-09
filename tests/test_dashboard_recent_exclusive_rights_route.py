@@ -24,6 +24,7 @@ def test_recent_exclusive_rights_route_returns_empty_items_instead_of_404(db_ses
     assert payload["items"] == []
     assert payload["months_back"] == 12
     assert "fallback_used" in payload
+    assert payload["random_sample"] is True
 
 
 def test_dashboard_js_fetches_recent_exclusive_rights_route():
@@ -31,6 +32,7 @@ def test_dashboard_js_fetches_recent_exclusive_rights_route():
 
     assert "/api/dashboard/recent-exclusive-rights" in script
     assert "loadRecentExclusiveRights" in script
+    assert "sample_ts" in script
 
 
 def test_recent_exclusive_rights_response_omits_debug_fields(db_session):

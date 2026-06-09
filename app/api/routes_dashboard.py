@@ -55,6 +55,7 @@ def monthly_new_products(
     insurance_type: str | None = None,
     include_review: bool = False,
     include_excluded_policy_products: bool = False,
+    random_sample: bool = True,
     db: Session = Depends(get_db),
 ) -> dict:
     return MonthlyNewProductService().get_monthly_new_products(
@@ -65,6 +66,7 @@ def monthly_new_products(
         insurance_type=insurance_type,
         include_review=include_review,
         include_excluded_policy_products=include_excluded_policy_products,
+        random_sample=random_sample,
     )
 
 
@@ -75,6 +77,7 @@ def recent_exclusive_rights(
     limit: int = 10,
     include_review: bool = False,
     fallback_latest: bool = True,
+    random_sample: bool = True,
     db: Session = Depends(get_db),
 ) -> dict:
     return ExclusiveRightService().recent_dashboard(
@@ -84,6 +87,7 @@ def recent_exclusive_rights(
         limit=limit,
         include_review=include_review,
         fallback_latest=fallback_latest,
+        random_sample=random_sample,
     )
 
 
