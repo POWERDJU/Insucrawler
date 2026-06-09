@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -213,24 +214,25 @@ class ProductFullListConsolidationService:
             merge_ids = [item for item in merge_ids if item != canonical_id]
         confidence = self._confidence_float(merge_group.get("confidence"))
         canonical_name = str(merge_group.get("canonical_name") or "")
-        reasons: list[str] = []
+        hard_reasons: list[str] = []
+        soft_reasons: list[str] = []
 
         if canonical_id not in candidate_map:
-            reasons.append("canonical_id outside company payload")
+            hard_reasons.append("canonical_id outside company payload")
         if any(item not in candidate_map for item in merge_ids):
-            reasons.append("merge_ids outside company payload")
+            hard_reasons.append("merge_ids outside company payload")
         if confidence < 0.85:
-            reasons.append("confidence below 0.85")
+            hard_reasons.append("confidence below 0.85")
         if not merge_ids:
-            reasons.append("no merge_ids")
+            hard_reasons.append("no merge_ids")
         if self.llm_service._is_generic_canonical_name(canonical_name):
-            reasons.append("generic canonical name")
+            hard_reasons.append("generic canonical name")
 
         products = [db.get(DimProduct, item) for item in [canonical_id, *merge_ids] if item]
         products = [product for product in products if product is not None]
         known_companies = {product.company_id for product in products if product.company_id is not None}
         if len(known_companies) > 1:
-            reasons.append("known company differs")
+            hard_reasons.append("known company differs")
 
         canonical_candidate = candidate_map.get(canonical_id) if canonical_id else None
         for merge_id in merge_ids:
@@ -238,19 +240,33 @@ class ProductFullListConsolidationService:
             if not canonical_candidate or not merge_candidate:
                 continue
             if not self.blocking_service.product_type_compatible_soft(canonical_candidate.product_type_code, merge_candidate.product_type_code):
-                reasons.append(f"product type conflict: {merge_id}")
+                soft_reasons.append(f"product type conflict: {merge_id}")
             if self.blocking_service._specific_family_conflicts(canonical_candidate, merge_candidate):
-                reasons.append(f"specific family conflict: {merge_id}")
+                soft_reasons.append(f"specific family conflict: {merge_id}")
             if canonical_candidate.version_signature and merge_candidate.version_signature and canonical_candidate.version_signature != merge_candidate.version_signature:
-                reasons.append(f"version conflict: {merge_id}")
+                hard_reasons.append(f"version conflict: {merge_id}")
             canonical_versions = version_signature(canonical_name)
             if canonical_versions and merge_candidate.version_signature and canonical_versions != merge_candidate.version_signature:
-                reasons.append(f"canonical version conflict: {merge_id}")
+                hard_reasons.append(f"canonical version conflict: {merge_id}")
             if self.blocking_service._month_distance_too_far(canonical_candidate.release_year_month, merge_candidate.release_year_month, max_months=6):
-                reasons.append(f"release month too far: {merge_id}")
+                hard_reasons.append(f"release month too far: {merge_id}")
             if not self._has_family_overlap(canonical_candidate, merge_candidate, canonical_name):
-                reasons.append(f"insufficient family token overlap: {merge_id}")
+                soft_reasons.append(f"insufficient family token overlap: {merge_id}")
+            if self._has_product_class_conflict(canonical_candidate, merge_candidate, canonical_name):
+                hard_reasons.append(f"product class conflict: {merge_id}")
 
+        broad_allowed = (
+            not hard_reasons
+            and bool(soft_reasons)
+            and confidence >= 0.9
+            and canonical_candidate is not None
+            and all(
+                self._has_broad_context_anchor(canonical_candidate, candidate_map[merge_id], canonical_name, str(merge_group.get("reason") or ""))
+                for merge_id in merge_ids
+                if merge_id in candidate_map
+            )
+        )
+        reasons = hard_reasons if hard_reasons else ([] if not soft_reasons or broad_allowed else soft_reasons)
         status = "valid" if not reasons else "review"
         return {
             "item_type": "merge_group",
@@ -263,7 +279,7 @@ class ProductFullListConsolidationService:
             "validator_status": status,
             "action": "auto_apply" if status == "valid" else "review",
             "reason": merge_group.get("reason") or "",
-            "review_reason": "; ".join(dict.fromkeys(reasons)),
+            "review_reason": "; ".join(dict.fromkeys(soft_reasons if broad_allowed else reasons)),
         }
 
     def validate_alias_cleanup(
@@ -524,6 +540,87 @@ class ProductFullListConsolidationService:
             canonical_name_tokens.update(canonical.family_tokens)
             canonical_name_tokens.update(duplicate.family_tokens)
         return bool(canonical.family_tokens.intersection(duplicate.family_tokens)) and overlap >= 0.34
+
+    def _has_broad_context_anchor(
+        self,
+        canonical: ProductBlockCandidate,
+        duplicate: ProductBlockCandidate,
+        canonical_name: str,
+        reason: str,
+    ) -> bool:
+        if self._has_product_class_conflict(canonical, duplicate, canonical_name):
+            return False
+        shared_tokens = self._distinctive_shared_tokens(canonical, duplicate)
+        if shared_tokens:
+            return True
+        compact_values = [
+            self._compact_anchor_text(canonical.name),
+            self._compact_anchor_text(duplicate.name),
+            self._compact_anchor_text(canonical_name),
+            self._compact_anchor_text(" ".join(canonical.alias_names[:8])),
+            self._compact_anchor_text(" ".join(duplicate.alias_names[:8])),
+            self._compact_anchor_text(" ".join(canonical.article_titles[:4])),
+            self._compact_anchor_text(" ".join(duplicate.article_titles[:4])),
+            self._compact_anchor_text(reason),
+        ]
+        compact = " ".join(compact_values)
+        anchor_groups = (
+            ("보행자사고", "변호사", "법률자문", "자문", "한문철"),
+            ("5n5", "nh5n5", "5굿플러스", "굿플러스"),
+            ("7배", "더행복한", "체증", "종신"),
+            ("ai", "건강코칭", "헬스케어", "탑재", "결합"),
+        )
+        for group in anchor_groups:
+            hits = {token for token in group if token in compact}
+            if len(hits) >= 2:
+                return True
+        return False
+
+    def _distinctive_shared_tokens(self, canonical: ProductBlockCandidate, duplicate: ProductBlockCandidate) -> set[str]:
+        stop = {"보험", "상품", "건강", "특약", "보장", "서비스", "신상품", "ai"}
+        left = {self._compact_anchor_text(token) for token in canonical.family_tokens if token}
+        right = {self._compact_anchor_text(token) for token in duplicate.family_tokens if token}
+        shared = {token for token in left.intersection(right) if token and token not in stop and len(token) >= 2}
+        if shared:
+            return shared
+        left_text = self._compact_anchor_text(" ".join([canonical.name, *canonical.alias_names[:8], *canonical.article_titles[:4]]))
+        right_text = self._compact_anchor_text(" ".join([duplicate.name, *duplicate.alias_names[:8], *duplicate.article_titles[:4]]))
+        return {token for token in left.union(right) if token and token not in stop and len(token) >= 3 and token in left_text and token in right_text}
+
+    def _has_product_class_conflict(self, canonical: ProductBlockCandidate, duplicate: ProductBlockCandidate, canonical_name: str) -> bool:
+        primary_left = self._product_class_tokens(" ".join([canonical.name, canonical_name]))
+        primary_right = self._product_class_tokens(duplicate.name)
+        if primary_left and primary_right and primary_left.isdisjoint(primary_right):
+            return True
+        left_classes = self._product_class_tokens(" ".join([canonical.name, canonical_name, *canonical.alias_names[:6]]))
+        right_classes = self._product_class_tokens(" ".join([duplicate.name, *duplicate.alias_names[:6]]))
+        return bool(left_classes and right_classes and left_classes.isdisjoint(right_classes))
+
+    @staticmethod
+    def _product_class_tokens(value: str) -> set[str]:
+        compact = re.sub(r"[^0-9A-Za-z가-힣]+", "", value or "").casefold()
+        classes: set[str] = set()
+        if "암" in compact:
+            classes.add("cancer")
+        if "정기" in compact:
+            classes.add("term")
+        if "종신" in compact or "wholelife" in compact:
+            classes.add("whole_life")
+        if "연금" in compact:
+            classes.add("annuity")
+        if "펫" in compact or "반려견" in compact or "반려동물" in compact:
+            classes.add("pet")
+        if "골프" in compact:
+            classes.add("golf")
+        if "여행" in compact:
+            classes.add("travel")
+        if "드론" in compact:
+            classes.add("drone")
+        return classes
+
+    @staticmethod
+    def _compact_anchor_text(value: str | None) -> str:
+        return re.sub(r"[^0-9A-Za-z가-힣]+", "", value or "").casefold()
 
     @staticmethod
     def _prompt(payload: dict[str, Any]) -> str:
