@@ -52,12 +52,16 @@ class ProductLLMConsolidationService:
         blocking_service: ProductBlockingService | None = None,
         router: LLMRouter | None = None,
         providers: dict[str, LLMProvider] | None = None,
+        provider_name: str | None = None,
+        model_name: str | None = None,
     ) -> None:
         self.blocking_service = blocking_service or ProductBlockingService()
         self.router = router or LLMRouter(providers=providers)
         self.cache_service = LLMCacheService()
         self.cost_service = LLMCostService()
         self.merge_service = ProductCanonicalizationService()
+        self.provider_name = provider_name
+        self.model_name = model_name
 
     def build_product_merge_blocks(self, db: Session, target: str = "all", limit: int | None = None) -> list[ProductBlock]:
         return self.blocking_service.build_blocks(db, target=target, limit=int(limit or 0))
@@ -260,8 +264,8 @@ class ProductLLMConsolidationService:
         }
 
     def _run_llm_with_cache(self, db: Session, prompt: str, task_type: str) -> tuple[dict[str, Any], FactLLMRun]:
-        provider_name = os.getenv("PRODUCT_LLM_CONSOLIDATION_PROVIDER") or os.getenv("LLM_CONSOLIDATION_PROVIDER", "gemini")
-        model_name = os.getenv("PRODUCT_LLM_CONSOLIDATION_MODEL") or os.getenv("LLM_CONSOLIDATION_MODEL", "gemini-2.5-flash")
+        provider_name = self.provider_name or os.getenv("PRODUCT_LLM_CONSOLIDATION_PROVIDER") or os.getenv("LLM_CONSOLIDATION_PROVIDER", "gemini")
+        model_name = self.model_name or os.getenv("PRODUCT_LLM_CONSOLIDATION_MODEL") or os.getenv("LLM_CONSOLIDATION_MODEL", "gemini-2.5-flash")
         provider = self.router._provider(provider_name, None)
         if hasattr(provider, "model_name"):
             provider.model_name = model_name
@@ -350,7 +354,11 @@ class ProductLLMConsolidationService:
             "You are judging whether product catalog rows are the same insurance product. "
             "Return JSON only with merge_groups, review_items, and no_merge_items. "
             "Never merge across different known insurers. Never merge conflicting versions such as 3.0 and 4.0. "
-            "Do not choose generic names as canonical names. Use only the compact candidate rows below; do not invent facts.\n\n"
+            "Merge abbreviated, spaced, typo-like, romanized, subtitle, or article-context variants when they clearly point to the same "
+            "insurance product from the same insurer. Use article titles/descriptions, aliases, release month, product type, and family tokens "
+            "as evidence, but do not invent facts. Do not merge separate products merely because they share a bundle article, rider category, "
+            "platform/service name, report, or generic benefit wording. Do not choose generic names as canonical names; choose the most complete "
+            "official Korean product name visible in the rows. Explain each merge reason in Korean when possible.\n\n"
             + json.dumps(payload, ensure_ascii=False)
         )
 

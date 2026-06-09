@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.db.models import DimCompany, DimProduct, FactLLMRun
+from app.db.models import FactArticle, FactProductArticle
 from app.llm.base import LLMResponse
 from app.services.product_full_list_consolidation_service import ProductFullListConsolidationService
 from app.services.product_llm_consolidation_service import ProductLLMConsolidationService
+from app.utils.hashing import article_dedup_hash
 
 
 class MockCompanyListProvider:
@@ -139,6 +143,69 @@ def test_full_list_validator_rejects_cross_company_merge(db_session, monkeypatch
     assert "known company differs" in rows[0]["review_reason"]
 
 
+def test_article_scope_qwen_consolidation_only_reviews_selected_products(db_session):
+    company = _company(db_session, "iM라이프생명")
+    canonical = _product(db_session, company, "iM스타트PRO변액연금보험", product_id=1)
+    duplicate = _product(db_session, company, "스타트PRO 변액연금", product_id=2)
+    outside_scope = _product(db_session, company, "iM마스터PRO변액연금보험", product_id=3)
+    article = FactArticle(
+        source_api="test",
+        title="iM라이프생명, 스타트PRO 변액연금보험 출시",
+        description="iM스타트PRO변액연금보험의 보장과 수익구조를 소개했다.",
+        publisher="test",
+        url="https://example.com/im-start-pro",
+        original_url="https://example.com/im-start-pro",
+        pub_date=datetime(2026, 6, 3),
+        content_hash=article_dedup_hash("https://example.com/im-start-pro", "iM라이프생명, 스타트PRO 변액연금보험 출시", ""),
+        extraction_status="cluster_extracted",
+    )
+    db_session.add(article)
+    db_session.flush()
+    db_session.add_all(
+        [
+            FactProductArticle(product_id=canonical.product_id, article_id=article.article_id, extraction_status="saved"),
+            FactProductArticle(product_id=duplicate.product_id, article_id=article.article_id, extraction_status="saved"),
+        ]
+    )
+    db_session.commit()
+
+    provider = MockCompanyListProvider(
+        {
+            "merge_groups": [
+                {
+                    "canonical_id": canonical.product_id,
+                    "canonical_name": canonical.normalized_product_name,
+                    "merge_ids": [duplicate.product_id],
+                    "confidence": 0.94,
+                    "reason": "같은 기사와 같은 회사에서 언급된 축약명 변형",
+                }
+            ],
+            "alias_cleanup": [],
+            "review_items": [],
+        }
+    )
+    llm_service = ProductLLMConsolidationService(providers={"qwen": provider}, provider_name="qwen", model_name="qwen-test")
+    service = ProductFullListConsolidationService(llm_service=llm_service)
+
+    result = service.run_article_scope_consolidation(
+        db_session,
+        mode="apply",
+        date_from="2026-06-01",
+        date_to="2026-06-09",
+        force_enabled=True,
+    )
+
+    db_session.refresh(duplicate)
+    db_session.refresh(outside_scope)
+    assert result["product_id_count"] == 2
+    assert result["auto_apply_count"] == 1
+    assert provider.calls == 1
+    assert "abbreviation" in provider.prompts[0]
+    assert duplicate.product_status == "merged"
+    assert duplicate.merged_into_product_id == canonical.product_id
+    assert outside_scope.product_status == "active"
+
+
 def test_alias_cleanup_marks_different_product_family_for_review(db_session):
     company = _company(db_session, "ABL Life")
     product = _product(db_session, company, "WON health refund insurance", product_id=1, product_type="HEALTH_COMPREHENSIVE")
@@ -164,4 +231,3 @@ def test_alias_cleanup_marks_different_product_family_for_review(db_session):
 
     assert rows[0]["item_type"] == "alias_cleanup"
     assert rows[0]["action"] == "alias_cleanup_review"
-

@@ -19,6 +19,8 @@ from app.services.exclusive_right_service import ExclusiveRightService
 from app.services.extract_service import ExtractService
 from app.services.full_data_review_service import FullDataReviewService, FullReviewRequestData
 from app.services.product_consolidation_service import ProductConsolidationService
+from app.services.product_full_list_consolidation_service import ProductFullListConsolidationService
+from app.services.product_llm_consolidation_service import ProductLLMConsolidationService
 from app.services.qwen_adjudication_service import final_adjudication_disabled
 from app.utils.dates import utcnow
 
@@ -275,8 +277,23 @@ class ScheduledRefreshService:
             use_llm_for_gray_blocks=False,
         )
         exclusive = ExclusiveRightConsolidationService().run(db, mode="rule_only_apply", crawl_job_id=crawl_job_id)
+        product_llm: dict[str, Any] = {}
         qwen: dict[str, Any] = {}
         if job and job.include_qwen_adjudication:
+            if _env_bool("PRODUCT_QWEN_CONSOLIDATION_AFTER_POSTPROCESS", True):
+                product_llm = ProductFullListConsolidationService(
+                    llm_service=ProductLLMConsolidationService(
+                        provider_name="qwen",
+                        model_name=os.getenv("QWEN_PRODUCT_CONSOLIDATION_MODEL") or os.getenv("QWEN_EXTRACT_MODEL") or "qwen-plus",
+                    )
+                ).run_article_scope_consolidation(
+                    db,
+                    mode="apply",
+                    crawl_job_id=crawl_job_id,
+                    max_blocks=int(os.getenv("PRODUCT_QWEN_CONSOLIDATION_MAX_CALLS", "12")),
+                    plan_file=f"data/exports/product_full_list_qwen_merge_plan_crawl_job_{crawl_job_id}.csv",
+                    force_enabled=True,
+                )
             review = FullDataReviewService().run(
                 db,
                 FullReviewRequestData(
@@ -298,7 +315,7 @@ class ScheduledRefreshService:
             job.consolidation_status = "completed"
             job.finished_at = job.finished_at or utcnow()
             db.commit()
-        return {"product_consolidation": product, "exclusive_consolidation": exclusive, "qwen": qwen}
+        return {"product_consolidation": product, "product_qwen_consolidation": product_llm, "exclusive_consolidation": exclusive, "qwen": qwen}
 
     @classmethod
     def start_background_loop(cls) -> bool:

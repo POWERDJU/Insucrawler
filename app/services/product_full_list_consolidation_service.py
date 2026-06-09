@@ -7,9 +7,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.db.models import DimCompany, DimProduct
+from app.db.models import DimCompany, DimProduct, FactArticle, FactProductArticle
 from app.normalizers.product_name_normalizer import is_generic_product_family_signature, version_signature
 from app.services.product_blocking_service import ProductBlockCandidate, ProductBlockingService
 from app.services.product_canonicalization_service import ProductCanonicalizationService
@@ -49,6 +50,29 @@ class ProductFullListConsolidationService:
     ) -> list[dict[str, Any]]:
         candidates = self.blocking_service._load_candidates(db, target="all", limit=int(limit or 0))
         candidates = [candidate for candidate in candidates if self._candidate_in_target(db, candidate, target)]
+        return self._build_groups_from_candidates(db, candidates, company_name=company_name)
+
+    def build_product_id_groups(
+        self,
+        db: Session,
+        product_ids: list[int] | set[int],
+        *,
+        company_name: str | None = None,
+    ) -> list[dict[str, Any]]:
+        selected_ids = {int(product_id) for product_id in product_ids}
+        if not selected_ids:
+            return []
+        candidates = self.blocking_service._load_candidates(db, target="all", limit=0)
+        candidates = [candidate for candidate in candidates if candidate.product_id in selected_ids]
+        return self._build_groups_from_candidates(db, candidates, company_name=company_name)
+
+    def _build_groups_from_candidates(
+        self,
+        db: Session,
+        candidates: list[ProductBlockCandidate],
+        *,
+        company_name: str | None = None,
+    ) -> list[dict[str, Any]]:
         if company_name:
             candidates = [candidate for candidate in candidates if self._company_name(db, candidate.company_id) == company_name]
 
@@ -82,6 +106,31 @@ class ProductFullListConsolidationService:
                     }
                 )
         return groups
+
+    def product_ids_for_article_scope(
+        self,
+        db: Session,
+        *,
+        crawl_job_id: int | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> list[int]:
+        query = (
+            db.query(DimProduct.product_id)
+            .join(FactProductArticle, FactProductArticle.product_id == DimProduct.product_id)
+            .join(FactArticle, FactArticle.article_id == FactProductArticle.article_id)
+            .filter(
+                DimProduct.product_status.in_(["active", "provisional", "review"]),
+                func.coalesce(FactProductArticle.extraction_status, "saved").notin_(["excluded_multi_company", "excluded_article_eligibility"]),
+            )
+        )
+        if crawl_job_id is not None:
+            query = query.filter(FactArticle.crawl_job_id == crawl_job_id)
+        if date_from:
+            query = query.filter(func.date(FactArticle.pub_date) >= date_from)
+        if date_to:
+            query = query.filter(func.date(FactArticle.pub_date) <= date_to)
+        return [int(row[0]) for row in query.distinct().order_by(DimProduct.product_id).all()]
 
     def build_compact_company_payload(self, db: Session, group: dict[str, Any]) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []
@@ -343,6 +392,103 @@ class ProductFullListConsolidationService:
             "plan_file": str(plan_file),
         }
 
+    def run_product_id_consolidation(
+        self,
+        db: Session,
+        product_ids: list[int] | set[int],
+        *,
+        mode: str = "dry_run",
+        company_name: str | None = None,
+        max_companies: int | None = None,
+        max_blocks: int | None = None,
+        plan_file: str | Path = DEFAULT_PLAN_PATH,
+        force_enabled: bool = False,
+    ) -> dict[str, Any]:
+        if mode not in {"dry_run", "apply"}:
+            raise ValueError("mode must be dry_run or apply")
+        product_ids = sorted({int(product_id) for product_id in product_ids})
+        if not product_ids:
+            return {
+                "status": "completed",
+                "product_id_count": 0,
+                "company_group_count": 0,
+                "llm_call_count": 0,
+                "auto_apply_count": 0,
+                "review_count": 0,
+                "alias_cleanup_count": 0,
+                "estimated_cost_usd": 0.0,
+                "plan_file": str(plan_file),
+            }
+        if not force_enabled and not self._enabled():
+            return {
+                "status": "disabled",
+                "product_id_count": len(product_ids),
+                "company_group_count": 0,
+                "llm_call_count": 0,
+                "auto_apply_count": 0,
+                "review_count": 0,
+                "alias_cleanup_count": 0,
+                "estimated_cost_usd": 0.0,
+                "plan_file": str(plan_file),
+            }
+        company_limit = max_companies if max_companies is not None else int(os.getenv("PRODUCT_LLM_CONSOLIDATION_MAX_COMPANIES_PER_JOB", "50"))
+        block_limit = max_blocks if max_blocks is not None else int(os.getenv("PRODUCT_LLM_CONSOLIDATION_MAX_CALLS_PER_JOB", "30"))
+        groups = self.build_product_id_groups(db, product_ids, company_name=company_name)
+        if company_limit:
+            groups = groups[:company_limit]
+
+        max_cost = float(os.getenv("PRODUCT_LLM_CONSOLIDATION_MAX_COST_USD_PER_JOB", "3.0"))
+        rows: list[dict[str, Any]] = []
+        llm_call_count = 0
+        estimated_cost = 0.0
+        for group in groups:
+            if llm_call_count >= block_limit or estimated_cost >= max_cost:
+                break
+            plan, run = self.run_llm_company_product_review(db, group)
+            llm_call_count += 0 if run.cached_yn else 1
+            estimated_cost += float(run.estimated_cost_usd or 0)
+            rows.extend(self.validate_product_merge_plan(db, group, plan))
+        self._write_plan_csv(rows, Path(plan_file))
+        apply_summary = self.apply_product_merge_plan(db, rows, dry_run=(mode == "dry_run"))
+        db.commit()
+        return {
+            "status": "completed",
+            "product_id_count": len(product_ids),
+            "company_group_count": len(groups),
+            "llm_call_count": llm_call_count,
+            "auto_apply_count": apply_summary["applied"] if mode == "apply" else sum(1 for row in rows if row.get("action") == "auto_apply"),
+            "review_count": sum(1 for row in rows if row.get("action") == "review"),
+            "alias_cleanup_count": apply_summary["alias_cleanup"],
+            "estimated_cost_usd": round(estimated_cost, 8),
+            "plan_file": str(plan_file),
+        }
+
+    def run_article_scope_consolidation(
+        self,
+        db: Session,
+        *,
+        mode: str = "dry_run",
+        crawl_job_id: int | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        company_name: str | None = None,
+        max_companies: int | None = None,
+        max_blocks: int | None = None,
+        plan_file: str | Path = DEFAULT_PLAN_PATH,
+        force_enabled: bool = False,
+    ) -> dict[str, Any]:
+        product_ids = self.product_ids_for_article_scope(db, crawl_job_id=crawl_job_id, date_from=date_from, date_to=date_to)
+        return self.run_product_id_consolidation(
+            db,
+            product_ids,
+            mode=mode,
+            company_name=company_name,
+            max_companies=max_companies,
+            max_blocks=max_blocks,
+            plan_file=plan_file,
+            force_enabled=force_enabled,
+        )
+
     def _chunk_candidates(self, candidates: list[ProductBlockCandidate]) -> list[list[ProductBlockCandidate]]:
         max_products = int(os.getenv("PRODUCT_LLM_CONSOLIDATION_MAX_PRODUCTS_PER_PROMPT", "60"))
         ordered = sorted(candidates, key=lambda candidate: (candidate.family_signature or "", sorted(candidate.family_tokens), candidate.product_id))
@@ -386,6 +532,11 @@ class ProductFullListConsolidationService:
             "Return JSON only. Identify rows that are the same insurance product even when news articles use shortened names. "
             "Do not merge different products from the same article. Do not merge across different known insurers. "
             "Do not merge conflicting versions. Do not choose generic canonical names such as 건강보험, 연금보험, 환급보험, 신상품, or 상품. "
+            "Use article_titles, aliases, release_year_month, product_type, family_signature, family_tokens, and version_signature as compact evidence. "
+            "Merge spacing, typo-like, romanized/English, subtitle, abbreviation, and article-context naming variants when they clearly refer to one "
+            "same insurer product. Do not merge separate products merely because they appear in one bundle/news roundup, share broad categories, "
+            "or mention a common platform, report, rider type, discount, service, or generic benefit. Prefer the most complete official Korean "
+            "product name as canonical_name. Explain merge reasons in Korean when possible. "
             "Use merge_groups with canonical_id, canonical_name, merge_ids, confidence, reason. "
             "Use alias_cleanup when an alias clearly belongs to a different product family. "
             "Use review_items when unsure. Do not invent products or facts.\n\n"
