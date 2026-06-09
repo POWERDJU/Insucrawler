@@ -71,6 +71,10 @@ NON_INSURANCE_PRODUCT_KEYWORDS = (
 ROUNDUP_MARKERS = ("/", "|", "·", ";", "①", "②", "③", "▶", "◆", "◇", "■", "□", "◾", "●")
 
 GENERAL_NON_INSURANCE_PRODUCT_KEYWORDS = (
+    "유전체 기반 신생아 선별검사",
+    "신생아 선별검사",
+    "3B-NEO",
+    "보험계리",
     "건강기능식품",
     "건기식",
     "젤리",
@@ -85,6 +89,10 @@ GENERAL_NON_INSURANCE_PRODUCT_KEYWORDS = (
 )
 
 GENERAL_NON_INSURANCE_PRODUCT_NAME_KEYWORDS = (
+    "유전체 기반 신생아 선별검사",
+    "신생아 선별검사",
+    "3B-NEO",
+    "보험계리",
     "건강기능식품",
     "건기식",
     "젤리",
@@ -95,6 +103,13 @@ GENERAL_NON_INSURANCE_PRODUCT_NAME_KEYWORDS = (
     "참기름",
     "멀티뷰",
     "SBS골프",
+)
+
+FORCED_GENERAL_NON_INSURANCE_PRODUCT_NAME_KEYWORDS = (
+    "유전체 기반 신생아 선별검사",
+    "신생아 선별검사",
+    "3B-NEO",
+    "보험계리",
 )
 
 NON_INSURANCE_SERVICE_KEYWORDS = (
@@ -211,6 +226,8 @@ def is_non_insurance_general_product_name(name: str | None) -> bool:
     compact = re.sub(r"\s+", "", name or "").upper()
     if not compact:
         return False
+    if any(re.sub(r"\s+", "", keyword).upper() in compact for keyword in FORCED_GENERAL_NON_INSURANCE_PRODUCT_NAME_KEYWORDS):
+        return True
     if any(token in compact for token in ["보험", "특약", "담보", "보장"]):
         return False
     return any(re.sub(r"\s+", "", keyword).upper() in compact for keyword in GENERAL_NON_INSURANCE_PRODUCT_NAME_KEYWORDS)
@@ -348,6 +365,18 @@ class ArticleEligibilityFilterService:
                 detected_non_insurance_services=non_insurance_services,
                 evidence=evidence,
                 confidence=0.9,
+            )
+        if self._looks_like_book_or_publication_article(value):
+            return ArticleEligibilityDecision(
+                eligible_for_product_extraction=False,
+                eligible_for_exclusive_right_extraction=False,
+                exclusion_reason="non_insurance_product_article",
+                detected_insurer_companies=multi.company_names,
+                detected_non_insurance_financial_institutions=non_insurers,
+                detected_non_insurance_products=non_insurance_products + general_non_insurance_products,
+                detected_non_insurance_services=non_insurance_services,
+                evidence=evidence,
+                confidence=0.95,
             )
 
         if self._looks_like_industry_trend_product_roundup(value) and not recoverable_exclusive_right:
@@ -516,7 +545,7 @@ class ArticleEligibilityFilterService:
     def _detect_general_non_insurance_products(self, text: str) -> list[str]:
         found: list[str] = []
         compact = re.sub(r"\s+", "", text or "").upper()
-        for keyword in GENERAL_NON_INSURANCE_PRODUCT_KEYWORDS:
+        for keyword in GENERAL_NON_INSURANCE_PRODUCT_KEYWORDS + FORCED_GENERAL_NON_INSURANCE_PRODUCT_NAME_KEYWORDS:
             if re.sub(r"\s+", "", keyword).upper() in compact and keyword not in found:
                 found.append(keyword)
         return found
@@ -617,6 +646,17 @@ class ArticleEligibilityFilterService:
         if not value:
             return False
         return any(keyword in value for keyword in ENTERTAINMENT_MODEL_KEYWORDS)
+
+    def _looks_like_book_or_publication_article(self, text: str) -> bool:
+        value = compact_spaces(text)
+        if not value:
+            return False
+        first_line = next((line.strip() for line in re.split(r"[\n\r]+", text or "") if line.strip()), "")
+        compact_title = re.sub(r"\s+", "", first_line)
+        compact_value = re.sub(r"\s+", "", value)
+        has_publication_marker = any(token in compact_title for token in ("출간", "출판", "도서", "서적", "책"))
+        has_actuarial_book_subject = any(token in compact_value for token in ("보험계리", "보험수리"))
+        return has_publication_marker and has_actuarial_book_subject
 
     def _title_has_insurance_product_focus(self, title: str) -> bool:
         compact = re.sub(r"\s+", "", title or "").upper()

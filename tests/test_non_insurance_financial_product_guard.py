@@ -20,6 +20,8 @@ def test_non_insurance_financial_product_name_guard():
 def test_non_insurance_general_product_name_guard():
     assert is_non_insurance_general_product_name("큐로세틴 젤리") is True
     assert is_non_insurance_general_product_name("한국형 AI SOTA K") is True
+    assert is_non_insurance_general_product_name("유전체 기반 신생아 선별검사 3B-NEO") is True
+    assert is_non_insurance_general_product_name("알기 쉬운 보험계리") is True
     assert is_non_insurance_general_product_name("AI 암보험") is False
 
 
@@ -123,6 +125,58 @@ def test_ai_service_article_with_insurer_validation_customer_is_ineligible(db_se
     assert decision.eligible_for_product_extraction is False
     assert decision.exclusion_reason == "non_insurance_product_article"
     assert "SOTA" in decision.detected_non_insurance_products
+
+
+def test_genomic_newborn_screening_article_is_ineligible(db_session):
+    title = "[AI의료] 쓰리빌리언, 유전체 기반 신생아 선별검사 '3B-NEO' 해외 출시 外"
+    description = "3B-NEO는 유전체 데이터를 활용한 신생아 선별검사 제품이며 KB손해보험 소식이 함께 언급됐다."
+    article = FactArticle(
+        source_api="test",
+        title=title,
+        description=description,
+        publisher="test",
+        url="https://example.com/3b-neo",
+        original_url="https://example.com/3b-neo",
+        query="test",
+        query_group="test",
+        content_hash=article_dedup_hash("https://example.com/3b-neo", title, ""),
+        extraction_status="pending",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    decision = ArticleEligibilityFilterService().classify_article(db_session, article)
+
+    assert decision.eligible_for_product_extraction is False
+    assert decision.eligible_for_exclusive_right_extraction is False
+    assert decision.exclusion_reason == "non_insurance_product_article"
+    assert "3B-NEO" in decision.detected_non_insurance_products
+
+
+def test_insurance_actuarial_book_article_is_ineligible(db_session):
+    title = "박영사, '알기 쉬운 보험계리' 출간"
+    description = "보험계리 이론과 실무를 설명하는 서적이다. 저자는 메리츠화재 재직 경험을 바탕으로 집필했다."
+    article = FactArticle(
+        source_api="test",
+        title=title,
+        description=description,
+        publisher="test",
+        url="https://example.com/actuarial-book",
+        original_url="https://example.com/actuarial-book",
+        query="test",
+        query_group="test",
+        content_hash=article_dedup_hash("https://example.com/actuarial-book", title, ""),
+        extraction_status="pending",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    decision = ArticleEligibilityFilterService().classify_article(db_session, article)
+
+    assert decision.eligible_for_product_extraction is False
+    assert decision.eligible_for_exclusive_right_extraction is False
+    assert decision.exclusion_reason == "non_insurance_product_article"
+    assert "보험계리" in decision.detected_non_insurance_products
 
 
 def test_industry_trend_product_roundup_article_is_ineligible(db_session):
