@@ -22,7 +22,14 @@ def test_manual_update_defaults_to_batch_postprocess_qwen(monkeypatch, db_sessio
         response = client.post(
             "/api/admin/crawl-jobs/manual-range",
             headers={"Authorization": f"Bearer {token}"},
-            json={"date_from": "2026-06-01", "date_to": "2026-06-08"},
+            json={
+                "date_from": "2026-06-01",
+                "date_to": "2026-06-08",
+                "extraction_mode": "none",
+                "include_exclusive_right_pipeline": False,
+                "pipeline_mode": "crawl_only",
+                "include_qwen_adjudication": False,
+            },
         )
         detail = client.get(
             f"/api/admin/crawl-jobs/{response.json()['crawl_job_id']}",

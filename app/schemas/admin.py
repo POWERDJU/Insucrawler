@@ -35,7 +35,7 @@ class CrawlIncrementalRequest(CrawlJobRunRequest):
 class CrawlManualRangeRequest(CrawlJobRunRequest):
     date_from: str
     date_to: str
-    max_days: int = Field(default=30, ge=1, le=30)
+    max_days: int = Field(default=31, ge=1, le=31)
     include_llm_extraction: bool = True
     extraction_mode: str = Field(default="batch", pattern="^(none|screening_only|enqueue_only|realtime|batch)$")
     include_exclusive_right_pipeline: bool = True

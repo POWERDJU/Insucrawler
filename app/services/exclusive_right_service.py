@@ -24,6 +24,7 @@ from app.db.models import (
 )
 from app.extractors.exclusive_right_schema import ExclusiveRightExtractionResult, validate_exclusive_right_payload
 from app.normalizers.company_normalizer import CompanyMatch, CompanyNormalizer
+from app.normalizers.korean_description_normalizer import koreanize_description_text
 from app.services.company_attribution_service import CompanyAttributionService
 from app.services.exclusive_right_final_adjudication_service import ExclusiveRightFinalAdjudicationService
 from app.services.final_adjudication_provider_factory import build_final_adjudication_provider
@@ -194,8 +195,8 @@ class ExclusiveRightService:
                 subject_core_key=subject_core_key,
                 exclusivity_months=exclusivity_months,
                 acquired_year_month=acquired_year_month,
-                feature_summary=payload.get("feature_summary"),
-                evidence_summary=payload.get("evidence_summary"),
+                feature_summary=koreanize_description_text(payload.get("feature_summary"), "feature_summary"),
+                evidence_summary=koreanize_description_text(payload.get("evidence_summary"), "evidence_summary"),
                 primary_article_id=article.article_id if article else payload.get("primary_article_id"),
                 primary_article_title=article.title if article else payload.get("primary_article_title") or payload.get("article_title"),
                 primary_article_url=self._article_url(article) if article else payload.get("primary_article_url") or payload.get("article_url"),
@@ -250,7 +251,7 @@ class ExclusiveRightService:
         observation.subject_core_key = subject_core_key
         observation.exclusivity_months = exclusive_right.exclusivity_months
         observation.acquired_year_month = exclusive_right.acquired_year_month
-        observation.feature_summary = payload.get("feature_summary") or observation.feature_summary
+        observation.feature_summary = koreanize_description_text(payload.get("feature_summary"), "feature_summary") or observation.feature_summary
         observation.article_title = article.title if article else payload.get("article_title") or observation.article_title
         observation.evidence_text = payload.get("evidence_text") or context_text or observation.evidence_text
         observation.status_candidate = payload.get("status_candidate") or "acquired"
@@ -815,7 +816,7 @@ class ExclusiveRightService:
         observation.subject_core_key = subject_core_key
         observation.exclusivity_months = self._nullable_int(payload.get("exclusivity_months"))
         observation.acquired_year_month = self._resolve_acquired_year_month_for_payload(payload, article=article, context_text=context_text)
-        observation.feature_summary = payload.get("feature_summary")
+        observation.feature_summary = koreanize_description_text(payload.get("feature_summary"), "feature_summary")
         observation.article_title = article.title if article else payload.get("article_title")
         observation.evidence_text = payload.get("evidence_text") or review_reason or context_text
         observation.status_candidate = status_candidate or payload.get("status_candidate") or "unknown"

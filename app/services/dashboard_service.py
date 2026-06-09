@@ -10,6 +10,7 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.normalizers.korean_description_normalizer import koreanize_description_text
 from app.services.company_service import CHANGED_STATUSES, CompanyService, FOREIGN_BRANCH_ROLES, REINSURER_ROLES
 from app.services.coverage_dedupe_service import dedupe_major_coverages
 from app.services.pivot_service import PivotService
@@ -402,6 +403,9 @@ class DashboardService:
             item = dict(row)
             item["needs_review"] = bool(item.get("needs_review"))
             item["release_year_month"] = display_release_year_month(item.get("release_year_month"))
+            for field_name in ("product_summary", "feature_summary", "coverage_summary", "partner_context_summary"):
+                if field_name in item:
+                    item[field_name] = koreanize_description_text(item.get(field_name), field_name) or item.get(field_name)
             if request.get("keyword"):
                 item["match_reason"] = "keyword"
             products.append(item)

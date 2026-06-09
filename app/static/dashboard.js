@@ -841,6 +841,7 @@ function renderProducts(products) {
 }
 
 function renderTable(table, records, options = {}) {
+  if (!table) return;
   const preferred = options.preferredKeys || [];
   table.innerHTML = "";
   if (!records.length) {
@@ -1661,7 +1662,7 @@ function renderMobileExclusiveCards(items) {
 }
 
 function bindAdminEvents() {
-  document.getElementById("toggleAdminPanel").addEventListener("click", () => {
+  document.getElementById("toggleAdminPanel")?.addEventListener("click", () => {
     const panel = document.getElementById("adminPanel");
     panel.hidden = !panel.hidden;
     if (!panel.hidden && state.adminToken) {
@@ -1669,11 +1670,18 @@ function bindAdminEvents() {
       refreshCrawlJobs();
     }
   });
-  document.getElementById("adminAuth").addEventListener("click", authenticateAdmin);
-  document.getElementById("refreshCrawlJobs").addEventListener("click", refreshCrawlJobs);
-  document.getElementById("refreshLlmSavings").addEventListener("click", refreshLlmSavingsSummary);
-  document.getElementById("refreshLlmBatchJobs").addEventListener("click", refreshLlmBatchJobs);
-  document.getElementById("createLlmBatchJob").addEventListener("click", createLlmBatchJob);
+  document.getElementById("closeAdminPanel")?.addEventListener("click", hideAdminPanel);
+  document.getElementById("adminAuth")?.addEventListener("click", authenticateAdmin);
+  document.getElementById("adminPassword")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      authenticateAdmin();
+    }
+  });
+  document.getElementById("refreshCrawlJobs")?.addEventListener("click", refreshCrawlJobs);
+  document.getElementById("refreshLlmSavings")?.addEventListener("click", refreshLlmSavingsSummary);
+  document.getElementById("refreshLlmBatchJobs")?.addEventListener("click", refreshLlmBatchJobs);
+  document.getElementById("createLlmBatchJob")?.addEventListener("click", createLlmBatchJob);
   document.getElementById("refreshLlmGuardSummary")?.addEventListener("click", refreshLlmGuardSummary);
   document.getElementById("refreshProductConsolidation")?.addEventListener("click", refreshProductConsolidation);
   document.getElementById("runProductConsolidation")?.addEventListener("click", runProductConsolidation);
@@ -1682,23 +1690,95 @@ function bindAdminEvents() {
   document.getElementById("runExclusiveRightConsolidation")?.addEventListener("click", runExclusiveRightConsolidation);
   document.getElementById("runFullQwenReview")?.addEventListener("click", runFullQwenReview);
   document.getElementById("refreshScheduledRefresh")?.addEventListener("click", refreshScheduledRefreshStatus);
-  document.getElementById("runTestCrawl").addEventListener("click", () => startCrawlJob("/api/admin/crawl-jobs/test-2026-01", adminCrawlOptions()));
-  document.getElementById("runBackfillCrawl").addEventListener("click", () => startCrawlJob("/api/admin/crawl-jobs/backfill-2024-2026-05", adminCrawlOptions()));
-  document.getElementById("runIncrementalCrawl").addEventListener("click", () =>
+  document.getElementById("runTestCrawl")?.addEventListener("click", () => startCrawlJob("/api/admin/crawl-jobs/test-2026-01", adminCrawlOptions()));
+  document.getElementById("runBackfillCrawl")?.addEventListener("click", () => startCrawlJob("/api/admin/crawl-jobs/backfill-2024-2026-05", adminCrawlOptions()));
+  document.getElementById("runIncrementalCrawl")?.addEventListener("click", () =>
     startCrawlJob("/api/admin/crawl-jobs/incremental", {
       ...adminCrawlOptions(),
-      days_back: Number(document.getElementById("incrementalDays").value || 14),
+      days_back: Number(document.getElementById("incrementalDays")?.value || 14),
     }),
   );
-  document.getElementById("runManualCrawl").addEventListener("click", () =>
-    startCrawlJob("/api/admin/crawl-jobs/manual-range", {
-      ...adminCrawlOptions(),
-      date_from: document.getElementById("manualDateFrom").value,
-      date_to: document.getElementById("manualDateTo").value,
-    }),
-  );
+  document.getElementById("runManualCrawl")?.addEventListener("click", runManualUpdate);
+  initManualUpdateDates();
   if (state.adminToken) {
     showAdminControls();
+  }
+}
+
+function hideAdminPanel() {
+  const panel = document.getElementById("adminPanel");
+  if (panel) panel.hidden = true;
+}
+
+function initManualUpdateDates() {
+  const fromInput = document.getElementById("manualDateFrom");
+  const toInput = document.getElementById("manualDateTo");
+  if (!fromInput || !toInput) return;
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(today.getDate() - 30);
+  const todayValue = formatDateInput(today);
+  fromInput.max = todayValue;
+  toInput.max = todayValue;
+  if (!toInput.value) toInput.value = todayValue;
+  if (!fromInput.value) fromInput.value = formatDateInput(start);
+}
+
+function formatDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function manualUpdatePayload() {
+  const dateFrom = document.getElementById("manualDateFrom")?.value;
+  const dateTo = document.getElementById("manualDateTo")?.value;
+  const start = parseDateInput(dateFrom);
+  const end = parseDateInput(dateTo);
+  if (!start || !end) {
+    throw new Error("검색 시작날짜와 끝날짜를 모두 선택하세요.");
+  }
+  if (end < start) {
+    throw new Error("검색 끝날짜는 시작날짜보다 빠를 수 없습니다.");
+  }
+  const selectedDays = Math.round((end - start) / 86400000) + 1;
+  if (selectedDays > 31) {
+    throw new Error("업데이트 기간은 최대 31일까지 선택할 수 있습니다.");
+  }
+  return {
+    date_from: dateFrom,
+    date_to: dateTo,
+    max_days: 31,
+    include_llm_extraction: true,
+    extraction_mode: "batch",
+    include_exclusive_right_pipeline: true,
+    exclusive_right_pipeline_mode: "batch",
+    exclusive_right_auto_submit_batch: false,
+    exclusive_right_auto_import_when_completed: false,
+    exclusive_right_auto_consolidate: false,
+    include_reinsurers: false,
+    include_foreign_branches: false,
+    pipeline_mode: "crawl_parse_postprocess_qwen",
+    include_qwen_adjudication: true,
+    qwen_priority: true,
+    run_postprocess: true,
+    run_consolidation: true,
+  };
+}
+
+async function runManualUpdate() {
+  try {
+    await startCrawlJob("/api/admin/crawl-jobs/manual-range", manualUpdatePayload());
+  } catch (error) {
+    const message = document.getElementById("adminJobMessage");
+    if (message) message.textContent = error.message;
   }
 }
 
@@ -1769,8 +1849,8 @@ function adminCrawlOptions() {
     exclusive_right_auto_submit_batch: Boolean(document.getElementById("crawlExclusiveRightAutoSubmit")?.checked),
     exclusive_right_auto_consolidate: Boolean(document.getElementById("crawlExclusiveRightAutoConsolidate")?.checked),
     exclusive_right_limit: exclusiveLimit,
-    include_reinsurers: document.getElementById("crawlIncludeReinsurers").checked,
-    include_foreign_branches: document.getElementById("crawlIncludeForeignBranches").checked,
+    include_reinsurers: Boolean(document.getElementById("crawlIncludeReinsurers")?.checked),
+    include_foreign_branches: Boolean(document.getElementById("crawlIncludeForeignBranches")?.checked),
     pipeline_mode: document.getElementById("crawlPipelineMode")?.value || "crawl_only",
     include_qwen_adjudication: Boolean(document.getElementById("crawlIncludeQwen")?.checked),
     qwen_priority: true,
@@ -1885,12 +1965,6 @@ async function refreshCrawlJobs() {
   try {
     const jobs = await adminGetJson("/api/admin/crawl-jobs");
     renderCrawlJobs(jobs || []);
-    await refreshLlmCostSummary();
-    await refreshLlmSavingsSummary();
-    await refreshLlmBatchJobs();
-    await refreshLlmGuardSummary();
-    await refreshProductConsolidation();
-    await refreshScheduledRefreshStatus();
   } catch (error) {
     document.getElementById("adminJobMessage").textContent = error.message;
     if (error.message.includes("401")) {

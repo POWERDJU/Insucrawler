@@ -61,3 +61,35 @@ def test_normalize_extraction_payload_handles_common_llm_shape_drift():
     assert result.products[0].structured_features.sales_channels == ["123"]
     assert result.products[0].major_coverages[0].detail_level == "unknown"
     assert result.products[0].major_coverages[0].benefit_type == "unknown"
+
+
+def test_normalize_extraction_payload_coerces_sales_metric_values():
+    payload = {
+        "article_relevance": {"is_relevant": True, "relevance_type": "sales_performance"},
+        "products": [
+            {
+                "identity": {
+                    "raw_product_name": "Test Product",
+                    "company_name_candidate": "Test Company",
+                    "insurance_type": "unknown",
+                    "release_year_month": None,
+                },
+                "product_type_classification": {
+                    "primary_product_type": {"code": "OTHER", "name_ko": "Other"},
+                    "secondary_product_types": [],
+                },
+                "sales_metrics": [
+                    {"metric_name": "prescriptions", "metric_value": "300만", "metric_unit": "건", "evidence_text": "300만건"},
+                    {"metric_name": "premium", "metric_value": None, "metric_unit": "원", "evidence_text": "premium mentioned"},
+                ],
+                "evidence": {"product_name_evidence": "Test Product", "company_evidence": "Test Company"},
+            }
+        ],
+    }
+
+    normalized = normalize_extraction_payload(payload)
+    result = validate_extraction_payload(normalized)
+
+    assert result.products[0].sales_metrics[0].metric_value == 3000000
+    assert result.products[0].sales_metrics[1].metric_value == 0
+    assert result.products[0].sales_metrics[1].needs_human_review is True

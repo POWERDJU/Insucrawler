@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create or advance a manual date-range update pipeline.")
     parser.add_argument("--date-from", required=True)
     parser.add_argument("--date-to", required=True)
-    parser.add_argument("--max-days", type=int, default=30)
+    parser.add_argument("--max-days", type=int, default=31)
     parser.add_argument("--run-now", action="store_true")
     parser.add_argument("--crawl-job-id", type=int, default=None)
     return parser.parse_args()
@@ -69,7 +69,7 @@ def _validate_range(date_from: str, date_to: str, max_days: int) -> tuple[str, s
         end = today
     if end < start:
         raise ValueError("date_to must be greater than or equal to date_from")
-    if (end - start).days > max_days:
+    if (end - start).days + 1 > max_days:
         raise ValueError(f"manual range cannot exceed {max_days} days")
     return start.isoformat(), end.isoformat()
 

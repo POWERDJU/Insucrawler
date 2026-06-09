@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.normalizers.korean_description_normalizer import koreanize_description_text
 from app.utils.release_display import display_release_year_month
 
 from app.services.company_service import FOREIGN_BRANCH_ROLES, REINSURER_ROLES
@@ -292,7 +293,8 @@ class MonthlyNewProductService:
         for value in candidates:
             text_value = self._clean_text(value)
             if text_value:
-                return self._truncate_summary(text_value)
+                korean_text = koreanize_description_text(text_value, "feature_summary") or text_value
+                return self._truncate_summary(korean_text)
         return ""
 
     @staticmethod

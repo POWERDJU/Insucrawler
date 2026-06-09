@@ -1,4 +1,9 @@
 EXTRACTOR_PROMPT = """
+All user-facing descriptive fields must be written in natural Korean.
+This includes article_relevance.reason, narrative_insights.*_summary,
+major_coverages.condition_text, major_coverages.limit_text,
+major_coverages.coverage_summary, sales_metrics.metric_basis, and evidence summaries.
+Do not return English explanatory sentences in these fields.
 너는 국내 보험상품 뉴스 인텔리전스 추출기다.
 기사/입력 텍스트에서 보험상품 정보를 JSON으로만 추출한다.
 기사에 없는 값은 만들지 않는다.
@@ -154,6 +159,9 @@ PROMPT_VERSION = "2026-05-29-product-taxonomy-v1"
 
 EXCLUSIVE_RIGHT_EXTRACTOR_PROMPT = """
 You extract Korean insurance exclusive-use-right events from article snippets only.
+All user-facing descriptive fields must be written in natural Korean.
+This includes exclusive_right_relevance.reason, feature_summary, and evidence_summary.
+Do not return English explanatory sentences in these fields.
 
 Rules:
 - Treat an item as acquired only when the article clearly says 획득, 승인, 부여, 인정, or 받았다.

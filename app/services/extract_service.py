@@ -992,6 +992,12 @@ def normalize_extraction_payload(payload: dict[str, Any]) -> dict[str, Any]:
         for metric in product.get("sales_metrics") or []:
             if not isinstance(metric, dict):
                 continue
+            raw_metric_value = metric.get("metric_value")
+            metric["metric_value"] = _sales_metric_value_to_float(raw_metric_value)
+            if metric["metric_value"] == 0.0 and (
+                raw_metric_value in {None, ""} or not re.search(r"\d", str(raw_metric_value))
+            ):
+                metric["needs_human_review"] = True
             metric["evidence_text"] = _evidence_like_to_text(metric.get("evidence_text"))
     return normalized
 
@@ -1037,3 +1043,32 @@ def _int_like_to_int(value: Any) -> int | None:
         return None
     match = re.search(r"\d+", str(value))
     return int(match.group(0)) if match else None
+
+
+def _sales_metric_value_to_float(value: Any) -> float:
+    if value is None or value == "":
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, dict):
+        for key in ("value", "number", "amount", "count"):
+            if key in value:
+                return _sales_metric_value_to_float(value.get(key))
+        return 0.0
+    text = str(value).strip().replace(",", "")
+    multipliers = {
+        "조": 1_000_000_000_000,
+        "억": 100_000_000,
+        "만": 10_000,
+        "천": 1_000,
+    }
+    match = re.search(r"[-+]?\d+(?:\.\d+)?", text)
+    if not match:
+        return 0.0
+    number = float(match.group(0))
+    suffix = text[match.end() :]
+    for unit, multiplier in multipliers.items():
+        if unit in suffix:
+            number *= multiplier
+            break
+    return number

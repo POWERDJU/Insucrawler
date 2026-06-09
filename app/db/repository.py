@@ -30,6 +30,7 @@ from app.db.models import (
 )
 from app.normalizers.amount_normalizer import normalize_coverage_amount
 from app.normalizers.company_normalizer import CompanyNormalizer
+from app.normalizers.korean_description_normalizer import koreanize_description_payload, koreanize_description_text
 from app.normalizers.product_name_normalizer import (
     build_product_identity_key,
     normalize_product_name,
@@ -210,13 +211,13 @@ def upsert_product(db: Session, product: dict[str, Any], *, allow_unknown_compan
         "release_year_month_basis": product.get("release_year_month_basis") or "unknown",
         "first_seen_month": product.get("first_seen_month") or current_year_month(),
         "primary_product_type_code": primary_product_type_code,
-        "product_category_summary": product.get("product_category_summary"),
+        "product_category_summary": koreanize_description_text(product.get("product_category_summary"), "product_category_summary"),
         "confidence_total": float(product.get("confidence_total") or 0.0),
         "needs_review": needs_review,
         "product_status": product_status,
         "canonical_product_id": product.get("canonical_product_id"),
         "partner_company_name": product.get("partner_company_name"),
-        "partner_context_summary": product.get("partner_context_summary"),
+        "partner_context_summary": koreanize_description_text(product.get("partner_context_summary"), "partner_context_summary"),
     }
     if existing:
         conflicting_unique_keys: set[str] = set()
@@ -568,6 +569,22 @@ def add_structured_feature(db: Session, product_id: int, feature: dict[str, Any]
 
 
 def add_narrative_insight(db: Session, product_id: int, insight: dict[str, Any], article_id: int | None = None) -> FactProductNarrativeInsight:
+    insight = koreanize_description_payload(
+        dict(insight),
+        (
+            "feature_summary",
+            "product_development_summary",
+            "marketing_summary",
+            "target_customer_summary",
+            "underwriting_summary",
+            "channel_summary",
+            "coverage_summary",
+            "sales_summary",
+            "differentiation_summary",
+            "risk_note_summary",
+            "missing_info_summary",
+        ),
+    )
     item = FactProductNarrativeInsight(
         product_id=product_id,
         article_id=article_id,
@@ -593,6 +610,10 @@ def add_narrative_insight(db: Session, product_id: int, insight: dict[str, Any],
 
 
 def add_major_coverage(db: Session, product_id: int, coverage: dict[str, Any], article_id: int | None = None) -> FactProductMajorCoverage:
+    coverage = koreanize_description_payload(
+        dict(coverage),
+        ("amount_basis", "condition_text", "limit_text", "coverage_summary"),
+    )
     classifier = CoverageClassifier()
     classified = classifier.classify(coverage.get("coverage_name_normalized") or coverage.get("coverage_name_raw"), coverage.get("coverage_summary"))
     max_amount = coverage.get("max_amount_krw")

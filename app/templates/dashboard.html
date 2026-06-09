@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20260609-header-row" />
+    <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20260609-admin-update-simple" />
   </head>
   <body>
     <header class="app-header">
@@ -220,7 +220,10 @@
       <section id="adminPanel" class="panel admin-panel" hidden aria-label="관리자 업데이트">
         <div class="panel-header">
           <h2>관리자 업데이트</h2>
-          <button id="refreshCrawlJobs" type="button" class="secondary">상태 새로고침</button>
+          <div class="button-row">
+            <button id="refreshCrawlJobs" type="button" class="secondary">상태 새로고침</button>
+            <button id="closeAdminPanel" type="button" class="secondary" onclick="document.getElementById('adminPanel').hidden = true">닫기</button>
+          </div>
         </div>
         <div class="admin-content">
           <div id="adminLogin" class="admin-login">
@@ -232,273 +235,39 @@
             <span id="adminAuthMessage" class="muted"></span>
           </div>
           <div id="adminControls" hidden>
-            <div class="admin-actions">
-              <fieldset>
-                <legend>공통 옵션</legend>
-                <label class="checkbox-line"><input id="crawlIncludeLlm" type="checkbox" /><span>LLM 추출까지 실행</span></label>
-                <label>
-                  <span>LLM 처리방식</span>
-                  <select id="crawlExtractionMode">
-                    <option value="none">수집만</option>
-                    <option value="screening_only">screening만</option>
-                    <option value="enqueue_only" selected>queue만 생성</option>
-                    <option value="batch">Batch 추출용 queue</option>
-                    <option value="realtime">실시간 추출</option>
-                  </select>
-                </label>
-                <label class="checkbox-line"><input id="crawlIncludeExclusiveRightPipeline" type="checkbox" /><span>크롤링 후 배타적사용권 Batch 준비</span></label>
-                <label>
-                  <span>배타적사용권 처리방식</span>
-                  <select id="crawlExclusiveRightMode">
-                    <option value="screening_only">screening만</option>
-                    <option value="enqueue_only">queue만 생성</option>
-                    <option value="batch" selected>Batch 준비</option>
-                    <option value="realtime">실시간 소량 처리</option>
-                    <option value="none">처리 안 함</option>
-                  </select>
-                </label>
-                <label class="checkbox-line"><input id="crawlExclusiveRightAutoSubmit" type="checkbox" /><span>Batch 자동 제출</span></label>
-                <label class="checkbox-line"><input id="crawlExclusiveRightAutoConsolidate" type="checkbox" checked /><span>import 후 자동 통합</span></label>
-                <label><span>배타적사용권 limit</span><input id="crawlExclusiveRightLimit" type="number" min="1" max="10000" placeholder="1000" /></label>
-                <label class="checkbox-line"><input id="crawlIncludeReinsurers" type="checkbox" /><span>재보험 포함</span></label>
-                <label class="checkbox-line"><input id="crawlIncludeForeignBranches" type="checkbox" /><span>외국지점 포함</span></label>
-                <label>
-                  <span>파이프라인</span>
-                  <select id="crawlPipelineMode">
-                    <option value="crawl_only" selected>수집만</option>
-                    <option value="crawl_parse_postprocess">수집+파싱+후처리</option>
-                    <option value="crawl_parse_postprocess_qwen">수집+파싱+후처리+Qwen</option>
-                  </select>
-                </label>
-                <label class="checkbox-line"><input id="crawlRunPostprocess" type="checkbox" checked /><span>후처리 실행</span></label>
-                <label class="checkbox-line"><input id="crawlRunConsolidation" type="checkbox" checked /><span>통합 실행</span></label>
-                <label class="checkbox-line"><input id="crawlIncludeQwen" type="checkbox" /><span>Qwen 최종판정 실행</span></label>
-              </fieldset>
-              <div class="admin-action-card">
-                <h3>테스트 수집</h3>
-                <p>2026-01-01 ~ 2026-01-31 기간의 보험상품 뉴스를 수집합니다.</p>
-                <button id="runTestCrawl" type="button">2026년 1월 테스트 수집</button>
+            <div class="admin-update-card">
+              <div class="admin-update-copy">
+                <h3>기간 업데이트</h3>
+                <p>선택한 기간의 뉴스를 수집하고, 상품/배타적사용권 Batch 추출, 후처리, Qwen 최종점검까지 이어서 진행합니다.</p>
               </div>
-              <div class="admin-action-card">
-                <h3>전체 과거 적재</h3>
-                <p>2024-01-01 ~ 2026-05-31 기간을 월별/회사별/검색어별로 나누어 수집합니다.</p>
-                <button id="runBackfillCrawl" type="button">2024~2026년 5월 전체 수집</button>
+              <div class="admin-update-form">
+                <label><span>검색 시작날짜</span><input id="manualDateFrom" type="date" /></label>
+                <label><span>검색 끝날짜</span><input id="manualDateTo" type="date" /></label>
+                <button id="runManualCrawl" type="button">업데이트 시작</button>
               </div>
-              <div class="admin-action-card">
-                <h3>최근 데이터 업데이트</h3>
-                <label>
-                  <span>기간</span>
-                  <select id="incrementalDays">
-                    <option value="7">최근 7일</option>
-                    <option value="14" selected>최근 14일</option>
-                    <option value="30">최근 30일</option>
-                  </select>
-                </label>
-                <button id="runIncrementalCrawl" type="button">최근 뉴스 업데이트</button>
-              </div>
-              <div class="admin-action-card">
-                <h3>직접 기간 지정</h3>
-                <label><span>시작일</span><input id="manualDateFrom" type="date" value="2026-01-01" /></label>
-                <label><span>종료일</span><input id="manualDateTo" type="date" value="2026-01-31" /></label>
-                <button id="runManualCrawl" type="button">직접 기간 수집</button>
-              </div>
-              <div class="admin-action-card">
-                <h3>배타적사용권 추출</h3>
-                <label>
-                  <span>처리방식</span>
-                  <select id="exclusiveRightExtractionMode">
-                    <option value="none">none</option>
-                    <option value="screening_only">screening only</option>
-                    <option value="enqueue_only" selected>queue만 생성</option>
-                    <option value="batch">Batch 추출용 queue</option>
-                    <option value="realtime">실시간 정형화</option>
-                  </select>
-                </label>
-                <label><span>Limit</span><input id="exclusiveRightExtractionLimit" type="number" min="1" max="1000" value="100" /></label>
-                <label><span>Crawl job ID</span><input id="exclusiveRightCrawlJobId" type="number" min="1" placeholder="선택" /></label>
-                <label><span>시작일</span><input id="exclusiveRightDateFrom" type="date" /></label>
-                <label><span>종료일</span><input id="exclusiveRightDateTo" type="date" /></label>
-                <button id="runExclusiveRightExtraction" type="button">배타적사용권 추출 실행</button>
-                <button id="refreshExclusiveRightQueue" type="button" class="secondary">queue status</button>
-                <button id="runExclusiveRightConsolidation" type="button" class="secondary">rule consolidation</button>
-              </div>
-              <div class="admin-action-card">
-                <h3>전체 Qwen 검토</h3>
-                <label><span>시작일</span><input id="fullReviewDateFrom" type="date" value="2025-01-01" /></label>
-                <label><span>종료일</span><input id="fullReviewDateTo" type="date" value="2026-05-31" /></label>
-                <label><span>Crawl job ID</span><input id="fullReviewCrawlJobId" type="number" min="1" placeholder="선택" /></label>
-                <label><span>상품 limit</span><input id="fullReviewProductLimit" type="number" min="0" max="10000" value="50" /></label>
-                <label><span>배타권 limit</span><input id="fullReviewExclusiveLimit" type="number" min="0" max="10000" value="30" /></label>
-                <label class="checkbox-line"><input id="fullReviewApply" type="checkbox" /><span>수정 적용</span></label>
-                <button id="runFullQwenReview" type="button">Qwen 검토 실행</button>
-              </div>
-              <div class="admin-action-card">
-                <h3>예약 새로고침</h3>
-                <button id="refreshScheduledRefresh" type="button" class="secondary">예약 상태 조회</button>
-              </div>
+              <div class="admin-update-help">한 번에 선택할 수 있는 기간은 최대 31일입니다.</div>
             </div>
-            <div class="admin-warning">전체 수집은 오래 걸릴 수 있으며 API 호출량과 LLM 비용이 발생할 수 있습니다.</div>
+            <div class="admin-warning">업데이트 작업은 API 호출량과 LLM Batch/Qwen 비용이 발생할 수 있습니다.</div>
             <div id="adminJobMessage" class="muted"></div>
-            <section class="admin-report">
+            <section class="admin-report admin-status-report">
               <div class="panel-header">
-                <h3>전체 검토 / 예약 새로고침</h3>
+                <h3>최근 업데이트 작업</h3>
               </div>
-              <div id="fullReviewMessage" class="muted"></div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="fullReviewTable"></table>
-              </div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="scheduledRefreshTable"></table>
-              </div>
-            </section>
-            <section class="admin-report">
-              <div class="panel-header">
-                <h3>LLM 비용절감 리포트</h3>
-                <button id="refreshLlmSavings" type="button" class="secondary">비용절감 조회</button>
-              </div>
-              <div class="filter-grid compact-grid">
-                <label>
-                  <span>기간</span>
-                  <select id="llmSavingsRange">
-                    <option value="all">전체</option>
-                    <option value="today">오늘</option>
-                    <option value="7">최근 7일</option>
-                    <option value="30">최근 30일</option>
-                    <option value="custom">직접 지정</option>
-                  </select>
-                </label>
-                <label>
-                  <span>시작일</span>
-                  <input id="llmSavingsDateFrom" type="date" />
-                </label>
-                <label>
-                  <span>종료일</span>
-                  <input id="llmSavingsDateTo" type="date" />
-                </label>
-                <label>
-                  <span>Baseline</span>
-                  <select id="llmBaselinePolicy">
-                    <option value="all_articles_fulltext_extract_and_verify">모든 기사 fulltext extract + verify</option>
-                    <option value="all_articles_fulltext_extract_only">모든 기사 fulltext extract only</option>
-                    <option value="candidate_articles_fulltext_extract_and_verify">후보 기사 fulltext extract + verify</option>
-                    <option value="candidate_articles_fulltext_extract_only">후보 기사 fulltext extract only</option>
-                  </select>
-                </label>
-              </div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="llmSavingsTable"></table>
-              </div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="llmSavingsBreakdownTable"></table>
-              </div>
-            </section>
-            <section class="admin-report">
-              <div class="panel-header">
-                <h3>LLM Batch 작업</h3>
-                <button id="refreshLlmBatchJobs" type="button" class="secondary">Batch 상태 새로고침</button>
-              </div>
-              <div class="filter-grid compact-grid">
-                <label>
-                  <span>Task</span>
-                  <select id="llmBatchTaskType">
-                    <option value="extract" selected>상품 추출</option>
-                    <option value="exclusive_right_extract">배타적사용권 추출</option>
-                  </select>
-                </label>
-                <label>
-                  <span>모델</span>
-                  <input id="llmBatchModel" type="text" value="gemini-2.5-flash" />
-                </label>
-                <label>
-                  <span>요청 수</span>
-                  <input id="llmBatchLimit" type="number" min="1" max="10000" value="1000" />
-                </label>
-                <label>
-                  <span>Crawl Job ID</span>
-                  <input id="llmBatchCrawlJobId" type="number" min="1" placeholder="선택" />
-                </label>
-                <label class="checkbox-line">
-                  <input id="llmBatchSubmitNow" type="checkbox" />
-                  <span>생성 후 바로 제출</span>
-                </label>
-                <div class="button-row">
-                  <button id="createLlmBatchJob" type="button">Batch 생성</button>
-                </div>
-              </div>
-              <div id="llmBatchMessage" class="muted"></div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="llmBatchJobTable"></table>
-              </div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="llmBatchQueueTable"></table>
-              </div>
-            </section>
-            <section class="admin-report">
-              <div class="panel-header">
-                <h3>LLM 비용절감 가드</h3>
-                <button id="refreshLlmGuardSummary" type="button" class="secondary">가드 상태 새로고침</button>
-              </div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="llmGuardSummaryTable"></table>
-              </div>
-            </section>
-            <section class="admin-report">
-              <div class="panel-header">
-                <h3>상품통합 정리</h3>
-                <button id="refreshProductConsolidation" type="button" class="secondary">상품통합 상태 새로고침</button>
-              </div>
-              <div class="filter-grid compact-grid">
-                <label>
-                  <span>실행 모드</span>
-                  <select id="productConsolidationMode">
-                    <option value="dry_run">Dry-run</option>
-                    <option value="rule_only_apply" selected>Rule-only 적용</option>
-                    <option value="apply_with_llm_gray_blocks">LLM gray block 포함</option>
-                  </select>
-                </label>
-                <label>
-                  <span>대상</span>
-                  <select id="productConsolidationTarget">
-                    <option value="new_since_last_job">신규/미정리</option>
-                    <option value="all_provisional" selected>Provisional 전체</option>
-                    <option value="all">전체</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Limit</span>
-                  <input id="productConsolidationLimit" type="number" min="1" max="10000" value="500" />
-                </label>
-                <label class="checkbox-line">
-                  <input id="productConsolidationUseLlm" type="checkbox" />
-                  <span>gray block LLM 검토</span>
-                </label>
-                <div class="button-row">
-                  <button id="runProductConsolidation" type="button">상품통합 실행</button>
-                </div>
-              </div>
-              <div id="productConsolidationMessage" class="muted"></div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="productConsolidationSummaryTable"></table>
-              </div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="productConsolidationJobTable"></table>
-              </div>
-              <div class="table-wrap admin-table-wrap">
-                <table id="productConsolidationBlockTable"></table>
-              </div>
-            </section>
-            <div class="table-wrap admin-table-wrap">
-              <table id="llmCostTable"></table>
-            </div>
             <div class="table-wrap admin-table-wrap">
               <table id="crawlJobTable"></table>
             </div>
+            </section>
+            <section class="admin-report admin-status-report">
+              <div class="panel-header">
+                <h3>선택 작업 상세</h3>
+              </div>
             <div class="table-wrap admin-table-wrap">
               <table id="crawlJobDetailTable"></table>
             </div>
             <div class="table-wrap admin-table-wrap">
               <table id="crawlTaskTable"></table>
             </div>
+            </section>
           </div>
         </div>
       </section>
@@ -668,6 +437,6 @@
       </section>
     </main>
 
-    <script src="{{ url_for('static', path='dashboard.js') }}?v=20260609-active-export"></script>
+    <script src="{{ url_for('static', path='dashboard.js') }}?v=20260609-admin-update-simple"></script>
   </body>
 </html>

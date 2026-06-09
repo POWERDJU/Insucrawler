@@ -19,7 +19,7 @@ def _auth_client(monkeypatch, db_session):
     return client, {"Authorization": f"Bearer {token}"}
 
 
-def test_manual_update_rejects_range_over_30_day_span(monkeypatch, db_session):
+def test_manual_update_rejects_range_over_31_inclusive_days(monkeypatch, db_session):
     monkeypatch.setattr(CrawlJobService, "run_job_by_id", lambda self, crawl_job_id: None)
     client, headers = _auth_client(monkeypatch, db_session)
     try:
@@ -32,6 +32,22 @@ def test_manual_update_rejects_range_over_30_day_span(monkeypatch, db_session):
         app.dependency_overrides.clear()
 
     assert response.status_code == 400
+
+
+def test_manual_update_accepts_31_inclusive_days(monkeypatch, db_session):
+    monkeypatch.setattr(CrawlJobService, "generate_queries", lambda self, db, **kwargs: [])
+    monkeypatch.setattr(CrawlJobService, "run_job_by_id", lambda self, crawl_job_id: None)
+    client, headers = _auth_client(monkeypatch, db_session)
+    try:
+        response = client.post(
+            "/api/admin/crawl-jobs/manual-range",
+            headers=headers,
+            json={"date_from": "2026-01-01", "date_to": "2026-01-31"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
 
 
 def test_manual_update_adjusts_future_date_to_today(monkeypatch, db_session):

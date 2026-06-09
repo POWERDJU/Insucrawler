@@ -205,7 +205,7 @@ def test_monthly_new_products_summary_fallback_order(db_session):
         article_title="article title",
     )
     result = MonthlyNewProductService().get_monthly_new_products(db_session, year_month="2026-05")
-    assert result["items"][0]["summary"] == "feature summary"
+    assert result["items"][0]["summary"] == "기사 원문에서 확인되는 상품 특징을 기준으로 정리했습니다."
 
     db_session.query(FactProductArticle).delete()
     db_session.query(FactProductMajorCoverage).delete()
@@ -216,9 +216,9 @@ def test_monthly_new_products_summary_fallback_order(db_session):
         db_session,
         name="월간 테스트 건강보험 2",
         narrative={},
-        article_description="article description",
+        article_description="대표 출시 기사 설명",
         article_title="article title",
         article_url="https://example.com/monthly-product-2",
     )
     result = MonthlyNewProductService().get_monthly_new_products(db_session, year_month="2026-05")
-    assert result["items"][0]["summary"] == "article description"
+    assert result["items"][0]["summary"] == "대표 출시 기사 설명"

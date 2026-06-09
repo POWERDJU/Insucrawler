@@ -73,7 +73,7 @@ def _normalize_manual_date_range(request_body: CrawlManualRangeRequest) -> tuple
         end = today
     if end < start:
         raise ValueError("date_to must be greater than or equal to date_from")
-    if (end - start).days > request_body.max_days:
+    if (end - start).days + 1 > request_body.max_days:
         raise ValueError(f"manual range cannot exceed {request_body.max_days} days")
     return start.isoformat(), end.isoformat()
 
@@ -218,21 +218,21 @@ def create_manual_range_crawl_job(
         db,
         date_from=date_from,
         date_to=date_to,
-        include_llm_extraction=request_body.include_llm_extraction,
-        extraction_mode=request_body.extraction_mode,
-        include_exclusive_right_pipeline=request_body.include_exclusive_right_pipeline,
-        exclusive_right_pipeline_mode=request_body.exclusive_right_pipeline_mode,
-        exclusive_right_auto_submit_batch=request_body.exclusive_right_auto_submit_batch,
-        exclusive_right_auto_import_when_completed=request_body.exclusive_right_auto_import_when_completed,
-        exclusive_right_auto_consolidate=request_body.exclusive_right_auto_consolidate,
+        include_llm_extraction=True,
+        extraction_mode="batch",
+        include_exclusive_right_pipeline=True,
+        exclusive_right_pipeline_mode="batch",
+        exclusive_right_auto_submit_batch=False,
+        exclusive_right_auto_import_when_completed=False,
+        exclusive_right_auto_consolidate=False,
         exclusive_right_limit=request_body.exclusive_right_limit,
-        include_reinsurers=request_body.include_reinsurers,
-        include_foreign_branches=request_body.include_foreign_branches,
-        pipeline_mode=request_body.pipeline_mode,
-        include_qwen_adjudication=request_body.include_qwen_adjudication,
-        qwen_priority=request_body.qwen_priority,
-        run_postprocess=request_body.run_postprocess,
-        run_consolidation=request_body.run_consolidation,
+        include_reinsurers=False,
+        include_foreign_branches=False,
+        pipeline_mode="crawl_parse_postprocess_qwen",
+        include_qwen_adjudication=True,
+        qwen_priority=True,
+        run_postprocess=True,
+        run_consolidation=True,
         requested_by="admin",
         requested_from=request.client.host if request.client else None,
     )

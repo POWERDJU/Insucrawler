@@ -428,7 +428,16 @@ input[type="month"] {
 }
 
 .admin-panel {
-  margin-top: 16px;
+  position: fixed;
+  top: 104px;
+  left: 24px;
+  right: 24px;
+  z-index: 1200;
+  max-height: calc(100vh - 128px);
+  overflow: auto;
+  margin-top: 0;
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
 }
 
 .admin-content {
@@ -455,7 +464,48 @@ input[type="month"] {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fbfcfd;
+  background: var(--surface);
+}
+
+.admin-update-card {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(360px, 1.5fr);
+  gap: 16px;
+  align-items: end;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.admin-update-copy h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.admin-update-copy p,
+.admin-update-help {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.admin-update-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr)) max-content;
+  gap: 10px;
+  align-items: end;
+}
+
+.admin-update-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-update-help {
+  grid-column: 2;
+  font-size: 13px;
 }
 
 .admin-action-card h3 {
@@ -488,7 +538,7 @@ input[type="month"] {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fbfcfd;
+  background: var(--surface);
 }
 
 .button-row {
@@ -776,6 +826,15 @@ tbody tr.selected-row {
     grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
 
+  .admin-update-card,
+  .admin-update-form {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-update-help {
+    grid-column: auto;
+  }
+
   .exclusive-list-filters {
     grid-template-columns: repeat(3, minmax(150px, 1fr));
   }
@@ -800,6 +859,13 @@ tbody tr.selected-row {
 
   .dashboard-shell {
     padding: 14px;
+  }
+
+  .admin-panel {
+    top: 72px;
+    left: 12px;
+    right: 12px;
+    max-height: calc(100vh - 88px);
   }
 
   .monthly-card h3 {
@@ -1149,7 +1215,8 @@ button.secondary:hover,
 
 .filter-field span,
 .exclusive-list-filters label > span,
-.admin-login label > span {
+.admin-login label > span,
+.admin-update-form label > span {
   color: var(--text-main);
   font-size: 15px;
   font-weight: 700;

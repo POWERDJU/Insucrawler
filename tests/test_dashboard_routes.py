@@ -64,9 +64,15 @@ def test_dashboard_root_uses_simplified_filter_ui():
     assert "toggleAdminPanel" in response.text
     assert "관리자 업데이트" in response.text
     assert "adminPassword" in response.text
-    assert "runTestCrawl" in response.text
-    assert "runBackfillCrawl" in response.text
-    assert "runIncrementalCrawl" in response.text
+    assert "검색 시작날짜" in response.text
+    assert "검색 끝날짜" in response.text
+    assert "runManualCrawl" in response.text
+    assert "업데이트 시작" in response.text
+    assert "closeAdminPanel" in response.text
+    assert "runTestCrawl" not in response.text
+    assert "runBackfillCrawl" not in response.text
+    assert "runIncrementalCrawl" not in response.text
+    assert "최대 31일" in response.text
     assert "includeChangedCompanies" not in response.text
     assert "합병/소멸/가교회사 포함" not in response.text
     assert "includeShortTermInsurers" not in response.text
