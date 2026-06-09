@@ -504,3 +504,48 @@ def test_exclusive_right_reject_without_subject_support_is_not_coerced_to_review
 
     assert result is candidate
     assert result.decision == "reject"
+
+
+def test_exclusive_right_accept_with_subject_correction_requires_structured_subject_name():
+    payload = ExclusiveRightFinalAdjudicationInput(
+        current_subject_name="Generic exclusive right subject",
+        current_company="Example Insurance",
+        acquired_year_month="2026-01",
+    )
+    candidate = ExclusiveRightFinalAdjudicationDecision(
+        decision="accept",
+        subject_name="Generic exclusive right subject",
+        company_name="Example Insurance",
+        acquired_year_month="2026-01",
+        reason="The current subject is generic and should be corrected to the specific rider named in evidence.",
+        confidence=0.92,
+        provider_called=True,
+    )
+
+    result = ExclusiveRightFinalAdjudicationService._require_subject_name_for_provider_subject_correction(candidate, payload)
+
+    assert result is not None
+    assert result.decision == "review"
+    assert result.reason == "provider_missing_subject_name_for_subject_correction"
+
+
+def test_exclusive_right_accept_with_structured_subject_correction_keeps_accept():
+    payload = ExclusiveRightFinalAdjudicationInput(
+        current_subject_name="Generic exclusive right subject",
+        current_company="Example Insurance",
+        acquired_year_month="2026-01",
+    )
+    candidate = ExclusiveRightFinalAdjudicationDecision(
+        decision="accept",
+        subject_name="Specific Legal Expense Rider",
+        company_name="Example Insurance",
+        acquired_year_month="2026-01",
+        reason="The current subject is generic; the corrected subject is Specific Legal Expense Rider.",
+        confidence=0.92,
+        provider_called=True,
+    )
+
+    result = ExclusiveRightFinalAdjudicationService._require_subject_name_for_provider_subject_correction(candidate, payload)
+
+    assert result is candidate
+    assert result.decision == "accept"

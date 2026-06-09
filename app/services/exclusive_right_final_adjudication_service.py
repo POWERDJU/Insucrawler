@@ -133,6 +133,7 @@ class ExclusiveRightFinalAdjudicationService:
 
         candidate = self._decision_from_provider(provider_output) if provider_output else None
         candidate = self._coerce_recoverable_reject(candidate, payload, article_decision)
+        candidate = self._require_subject_name_for_provider_subject_correction(candidate, payload)
         if candidate and candidate.decision in {"accept", "reassign_company"}:
             subject_name = candidate.subject_name or subject_validation.subject_name
             post_subject = validate_exclusive_subject_before_save(
@@ -407,6 +408,46 @@ class ExclusiveRightFinalAdjudicationService:
             if any(marker in window for marker in negative_markers) and any(term in window for term in support_terms):
                 return True
         return False
+
+    @staticmethod
+    def _require_subject_name_for_provider_subject_correction(
+        candidate: ExclusiveRightFinalAdjudicationDecision | None,
+        payload: ExclusiveRightFinalAdjudicationInput,
+    ) -> ExclusiveRightFinalAdjudicationDecision | None:
+        if candidate is None or candidate.decision not in {"accept", "reassign_company"}:
+            return candidate
+        current = compact_spaces(payload.current_subject_name or "").casefold()
+        subject = compact_spaces(candidate.subject_name or "").casefold()
+        reason = (candidate.reason or "").casefold()
+        correction_markers = (
+            "current subject",
+            "current name",
+            "incorrect",
+            "not canonical",
+            "descriptive phrase",
+            "generic descriptor",
+            "generic",
+            "fragment",
+            "sentence-fragment",
+            "unsupported",
+            "corrected",
+            "subject should be",
+            "should be corrected",
+        )
+        if not any(marker in reason for marker in correction_markers):
+            return candidate
+        if subject and subject != current:
+            return candidate
+        return ExclusiveRightFinalAdjudicationDecision(
+            decision="review",
+            subject_name=candidate.subject_name,
+            company_name=candidate.company_name or payload.current_company,
+            acquired_year_month=candidate.acquired_year_month or payload.acquired_year_month,
+            reason="provider_missing_subject_name_for_subject_correction",
+            evidence_quote=candidate.evidence_quote,
+            confidence=min(candidate.confidence, 0.5),
+            provider_called=candidate.provider_called,
+        )
 
     @staticmethod
     def _find_all(text: str, pattern: str) -> list[int]:
