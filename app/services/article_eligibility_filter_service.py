@@ -256,6 +256,10 @@ class ArticleEligibilityFilterService:
         general_non_insurance_products = self._detect_general_non_insurance_products(value)
         non_insurance_services = self._detect_non_insurance_services(value)
         roundup = self._looks_like_roundup(value)
+        recoverable_exclusive_right = (
+            not multi.is_multi_company
+            and self._has_recoverable_exclusive_right_event(value)
+        )
         primary_non_insurance = self._primary_non_insurance_financial_context(
             value,
             non_insurers=non_insurers,
@@ -272,7 +276,7 @@ class ArticleEligibilityFilterService:
             non_insurers=non_insurers,
             non_insurance_products=non_insurance_products,
             insurer_companies=multi.company_names,
-        ):
+        ) and not recoverable_exclusive_right:
             return ArticleEligibilityDecision(
                 eligible_for_product_extraction=False,
                 eligible_for_exclusive_right_extraction=False,
@@ -284,7 +288,7 @@ class ArticleEligibilityFilterService:
                 evidence=evidence,
                 confidence=0.95,
             )
-        if self._looks_like_multi_insurer_market_article(value, insurer_companies=multi.company_names):
+        if self._looks_like_multi_insurer_market_article(value, insurer_companies=multi.company_names) and not recoverable_exclusive_right:
             return ArticleEligibilityDecision(
                 eligible_for_product_extraction=False,
                 eligible_for_exclusive_right_extraction=False,
@@ -346,7 +350,7 @@ class ArticleEligibilityFilterService:
                 confidence=0.9,
             )
 
-        if self._looks_like_industry_trend_product_roundup(value):
+        if self._looks_like_industry_trend_product_roundup(value) and not recoverable_exclusive_right:
             return ArticleEligibilityDecision(
                 eligible_for_product_extraction=False,
                 eligible_for_exclusive_right_extraction=False,
@@ -358,7 +362,7 @@ class ArticleEligibilityFilterService:
                 evidence=evidence,
                 confidence=0.85,
             )
-        if multi.is_multi_company:
+        if multi.is_multi_company and not recoverable_exclusive_right:
             return ArticleEligibilityDecision(
                 eligible_for_product_extraction=False,
                 eligible_for_exclusive_right_extraction=False,
@@ -626,6 +630,43 @@ class ArticleEligibilityFilterService:
         has_industry_marker = any(re.sub(r"\s+", "", marker) in compact_title for marker in INDUSTRY_TREND_TITLE_MARKERS)
         has_product_marker = any(re.sub(r"\s+", "", marker) in compact_title for marker in INDUSTRY_TREND_PRODUCT_MARKERS)
         return has_industry_marker and has_product_marker
+
+    def _has_recoverable_exclusive_right_event(self, text: str) -> bool:
+        value = compact_spaces(text)
+        if not value:
+            return False
+        compact = re.sub(r"\s+", "", value)
+        has_exclusive = any(
+            token in compact
+            for token in (
+                "배타적사용권",
+                "배타적사용권을",
+                "배타적사용권획득",
+                "독점판매권",
+                "독점사용권",
+            )
+        ) or "exclusive use right" in value.casefold() or "exclusive-use-right" in value.casefold()
+        if not has_exclusive:
+            return False
+        has_acquired = any(
+            token in compact
+            for token in (
+                "획득",
+                "부여",
+                "인정",
+                "승인",
+                "확보",
+                "취득",
+            )
+        ) or any(token in value.casefold() for token in ("acquired", "granted", "obtained", "secured"))
+        if not has_acquired:
+            return False
+        subject_nearby = bool(
+            re.search(r"['\"‘“][^'\"’”]{2,90}['\"’”].{0,80}(?:배타적\s*사용권|exclusive[- ]use[- ]right)", value, re.IGNORECASE)
+            or re.search(r"[가-힣A-Za-z0-9()·\[\] -]{2,90}(?:특약|담보|보험|서비스|상품|구조|제도).{0,80}(?:배타적\s*사용권|exclusive[- ]use[- ]right)", value, re.IGNORECASE)
+            or re.search(r"(?:for|for the) ['\"‘“][^'\"’”]{2,90}['\"’”]", value, re.IGNORECASE)
+        )
+        return subject_nearby
 
     def _looks_like_financial_roundup_title(
         self,

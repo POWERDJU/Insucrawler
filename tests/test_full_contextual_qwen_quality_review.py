@@ -101,6 +101,36 @@ def test_financial_roundup_and_market_articles_are_ineligible(db_session):
     assert market.exclusion_reason == "industry_trend_multi_company_article"
 
 
+def test_roundup_title_with_specific_exclusive_right_event_remains_eligible(db_session):
+    service = ArticleEligibilityFilterService()
+
+    decision = service.classify_text(
+        db_session,
+        "보험업계, 돌봄통합지원법 시행 맞춰 보장 경쟁 확대\n"
+        "현대해상은 '재택간병인지원 담보'에 대해 6개월 배타적사용권을 획득했다.",
+    )
+
+    assert decision.is_eligible is True
+    assert decision.exclusion_reason is None
+
+
+def test_multi_insurer_exclusive_right_article_remains_ineligible(db_session):
+    service = ArticleEligibilityFilterService()
+
+    decision = service.classify_text(
+        db_session,
+        "보험업계, 배타적사용권 경쟁 확대\n"
+        "현대해상은 '재택간병인지원 담보'에 대해 6개월 배타적사용권을 획득했다. "
+        "삼성생명도 '간병보장 특약' 배타적사용권을 받았다.",
+    )
+
+    assert decision.is_eligible is False
+    assert decision.exclusion_reason in {
+        "multi_company_article",
+        "industry_trend_multi_company_article",
+    }
+
+
 def test_qwen_quality_review_uses_separate_audit_task_types(db_session, tmp_path):
     article = FactArticle(
         source_api="test",

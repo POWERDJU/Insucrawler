@@ -165,7 +165,9 @@ Rules:
 - If the article title product does not appear in the local exclusive-use-right window, do not use the title product as subject_name.
 - Never output pronouns or weak phrases such as 해당 상품, 이번 상품, 이 상품, 신상품, 해당 특약, 서비스 as subject_name.
 - When a weak phrase appears, resolve it from the previous sentence or same paragraph. Example: if the text says 쟁점은 ... '돌봄 로봇 제공 서비스'다 and then 삼성생명은 해당 상품에 대해 배타적 사용권을 인정받았다, subject_name is 돌봄 로봇 제공 서비스.
-- For mixed-company roundup articles, extract only the company and subject in the local window containing 배타적사용권/신상품심의위원회/획득/인정.
+- Keep the multi-insurer exclusion. If the article context contains multiple insurer companies or multiple exclusive-use-right events, do not extract it as a single valid row unless a separate non-multi-company source independently supports the row.
+- For mixed financial roundup articles that are not multi-insurer, extract only the company and subject in the local window containing 배타적사용권/신상품심의위원회/획득/인정.
+- Do not drop an article solely because its title is roundup/market/management-style when the article is not multi-insurer. If a local window names one insurer and one specific rider/coverage/product/service with acquired/granted exclusive-use-right evidence, extract that event and correct the subject_name from the local window.
 - Preserve evidence_text for company, period, acquired month, subject, and feature summary.
 
 Return JSON with:
