@@ -118,10 +118,12 @@ class ExclusiveRightBlockingService:
     def same_block(self, left: FactExclusiveUseRight, right: FactExclusiveUseRight) -> bool:
         if not self._same_company_context(left, right):
             return False
-        if not self._month_close(left.acquired_year_month, right.acquired_year_month):
-            return False
         name_similarity = self._similarity(left.subject_name, right.subject_name)
         core_equal = bool(left.subject_core_key and left.subject_core_key == right.subject_core_key)
+        if core_equal:
+            return True
+        if not self._month_close(left.acquired_year_month, right.acquired_year_month):
+            return False
         scores = exclusive_event_similarity(left, right)
         context_similarity = max(
             self._context_similarity(left, right),
@@ -130,8 +132,6 @@ class ExclusiveRightBlockingService:
             scores["evidence_overlap"],
         )
         shared_tokens = self._shared_high_info_tokens(left, right)
-        if core_equal:
-            return True
         left_weak = is_generic_or_weak_subject(left.subject_name) or has_bad_subject_tail(left.subject_name)
         right_weak = is_generic_or_weak_subject(right.subject_name) or has_bad_subject_tail(right.subject_name)
         if left_weak != right_weak and left.exclusivity_months == right.exclusivity_months:
@@ -228,9 +228,6 @@ class ExclusiveRightConsolidationService:
             action = self._block_action(block.candidates)
             if action == "review":
                 review_count += 1
-                if mode != "dry_run":
-                    for candidate in block.candidates:
-                        candidate.needs_review = True
                 continue
             if mode == "dry_run":
                 continue
@@ -262,6 +259,8 @@ class ExclusiveRightConsolidationService:
         cores = {item.subject_core_key for item in candidates if item.subject_core_key}
         if len(cores) == 1:
             return "deterministic_subject_core_key"
+        if any(item.needs_review for item in candidates):
+            return "review"
         scores = [
             exclusive_event_similarity(left, right)
             for index, left in enumerate(candidates)

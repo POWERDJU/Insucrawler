@@ -19,6 +19,22 @@ def _right(name: str, *, months: int = 6, company_id: int | None = 1):
     )
 
 
+def test_same_company_subject_core_merges_even_when_acquired_month_differs(db_session):
+    left = _right("지정환율설정 연금지급특약")
+    right = _right("지정환율설정 연금지급특약")
+    left.acquired_year_month = "2025-08"
+    right.acquired_year_month = "2025-12"
+    db_session.add_all([left, right])
+    db_session.commit()
+
+    result = ExclusiveRightConsolidationService().run(db_session, mode="rule_only_apply")
+    db_session.refresh(left)
+    db_session.refresh(right)
+
+    assert result["auto_merge_count"] == 1
+    assert {left.event_status, right.event_status} == {"active", "merged"}
+
+
 def test_exclusive_right_consolidation_merges_same_company_subject_and_period(db_session):
     left = _right("키즈폰 미니보험")
     right = _right("키즈폰 미니 보험")

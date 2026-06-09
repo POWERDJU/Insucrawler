@@ -2,7 +2,7 @@ from app.db.models import FactExclusiveUseRight
 from app.services.exclusive_right_consolidation_service import ExclusiveRightConsolidationService
 
 
-def test_exclusive_right_period_conflict_is_marked_for_review(db_session):
+def test_exclusive_right_period_conflict_is_reported_without_flipping_review_flags(db_session):
     base = {
         "company_id": 1,
         "company_name_normalized": "한화손해보험",
@@ -27,5 +27,5 @@ def test_exclusive_right_period_conflict_is_marked_for_review(db_session):
 
     assert result["review_count"] == 1
     assert result["auto_merge_count"] == 0
-    assert all(row.needs_review for row in rows)
+    assert all(row.needs_review is False for row in rows)
     assert all(row.event_status != "merged" for row in rows)
