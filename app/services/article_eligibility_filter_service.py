@@ -317,6 +317,18 @@ class ArticleEligibilityFilterService:
                 evidence=evidence,
                 confidence=0.9,
             )
+        if self._looks_like_insurance_earnings_roundup_article(value) and not recoverable_exclusive_right:
+            return ArticleEligibilityDecision(
+                eligible_for_product_extraction=False,
+                eligible_for_exclusive_right_extraction=False,
+                exclusion_reason="industry_trend_multi_company_article",
+                detected_insurer_companies=multi.company_names,
+                detected_non_insurance_financial_institutions=non_insurers,
+                detected_non_insurance_products=non_insurance_products + general_non_insurance_products,
+                detected_non_insurance_services=non_insurance_services,
+                evidence=evidence,
+                confidence=0.9,
+            )
 
         if self._looks_like_sports_broadcast_service(value, non_insurance_services):
             return ArticleEligibilityDecision(
@@ -737,6 +749,48 @@ class ArticleEligibilityFilterService:
         if re.search(r"(?:이어|까지).*(?:보험|특약|상품).*경쟁", first_line):
             return True
         return len(insurer_companies) > 1 and any(marker in compact_title for marker in ("경쟁", "치열", "일제히", "새단장"))
+
+    def _looks_like_insurance_earnings_roundup_article(self, text: str) -> bool:
+        first_line = next((line.strip() for line in re.split(r"[\n\r]+", text or "") if line.strip()), "")
+        if not first_line:
+            return False
+        compact_title = re.sub(r"\s+", "", first_line)
+        if any(token in compact_title for token in ("출시", "선보", "공개", "판매", "배타적사용권", "특약")):
+            return False
+        has_insurer_scope = any(
+            token in compact_title
+            for token in (
+                "빅3생보사",
+                "빅3손보사",
+                "생보사",
+                "손보사",
+                "보험사",
+                "보험업계",
+                "보험권",
+            )
+        )
+        has_earnings_context = any(
+            token in compact_title
+            for token in (
+                "1분기",
+                "2분기",
+                "3분기",
+                "4분기",
+                "상반기",
+                "하반기",
+                "연간",
+                "순익",
+                "순이익",
+                "실적",
+                "보험손익",
+                "신계약",
+                "CSM",
+                "킥스",
+                "K-ICS",
+                "지급여력",
+            )
+        )
+        return has_insurer_scope and has_earnings_context
 
     def _has_insurance_product_context(self, text: str) -> bool:
         compact = re.sub(r"\s+", "", text or "")
