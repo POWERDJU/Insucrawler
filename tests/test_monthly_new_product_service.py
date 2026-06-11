@@ -88,7 +88,7 @@ def test_monthly_new_products_returns_current_month_items(db_session):
     assert result["items"][0]["product_name"] == "월간 테스트 건강보험"
     assert result["items"][0]["company_name"] == "삼성생명"
     assert result["items"][0]["primary_product_type"] == "건강(종합)"
-    assert result["items"][0]["summary"] == "건강 보장 수요를 반영한 이달의 신상품입니다."
+    assert result["items"][0]["summary"] == "건강 보장을 간략히 제공하는 상품입니다."
     assert result["items"][0]["article_url"] == article.original_url
 
 

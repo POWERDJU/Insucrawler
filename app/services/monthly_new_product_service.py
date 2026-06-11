@@ -225,6 +225,7 @@ class MonthlyNewProductService:
             "release_year_month": display_release_year_month(product.get("release_year_month")),
             "release_year_month_basis": product.get("release_year_month_basis"),
             "primary_product_type": product.get("primary_product_type"),
+            "product_summary": summary,
             "summary": summary,
             "article_title": article.get("title") if article else None,
             "article_pub_date": article.get("pub_date") if article else None,
@@ -294,9 +295,10 @@ class MonthlyNewProductService:
 
     def _summary(self, narrative: dict[str, Any], article: dict[str, Any] | None) -> str:
         candidates = [
-            narrative.get("product_development_summary"),
+            narrative.get("product_summary"),
             narrative.get("feature_summary"),
             narrative.get("coverage_summary"),
+            narrative.get("product_development_summary"),
             narrative.get("marketing_summary"),
             article.get("description") if article else None,
             article.get("title") if article else None,

@@ -217,6 +217,8 @@ def _korean_discourse_prefix_pattern() -> re.Pattern[str]:
 
 
 WEAK_PRODUCT_NAME_EXACTS = {
+    "있는보험",
+    "있는보험상품",
     "고령자유병자를위한건강보험",
     "고령자유병자대상건강보험",
     "고령자유병자위한건강보험",

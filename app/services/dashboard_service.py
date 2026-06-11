@@ -320,6 +320,10 @@ class DashboardService:
     def _products(self, db: Session, request: dict[str, Any]) -> list[dict[str, Any]]:
         sql = """
             SELECT s.*,
+                   ni.feature_summary AS product_summary,
+                   ni.feature_summary AS feature_summary,
+                   ni.product_development_summary AS product_development_summary,
+                   ni.marketing_summary AS marketing_summary,
                    (SELECT COUNT(*) FROM fact_product_major_coverage c WHERE c.product_id = s.product_id) AS major_coverage_count,
                    (
                      SELECT COUNT(DISTINCT pa.article_id)
@@ -330,6 +334,14 @@ class DashboardService:
                        AND COALESCE(pa.extraction_status, 'saved') NOT IN ('excluded_multi_company', 'excluded_article_eligibility')
                    ) AS article_count
             FROM vw_product_search s
+            LEFT JOIN (
+                SELECT ni2.product_id, MAX(ni2.insight_id) AS insight_id
+                FROM fact_product_narrative_insight ni2
+                LEFT JOIN fact_article ar ON ar.article_id = ni2.article_id
+                WHERE COALESCE(ar.multi_company_article_yn, 0) = 0
+                GROUP BY ni2.product_id
+            ) latest_ni ON latest_ni.product_id = s.product_id
+            LEFT JOIN fact_product_narrative_insight ni ON ni.insight_id = latest_ni.insight_id
             WHERE 1=1
               AND LOWER(COALESCE(s.product_status, 'active')) = 'active'
               AND TRIM(COALESCE(s.normalized_product_name, '')) NOT LIKE :special_clause_suffix
